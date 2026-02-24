@@ -1,0 +1,24 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "RSSR JSON Feed Fixture",
+  "home_page_url": "https://example.com",
+  "feed_url": "https://example.com/feed.json",
+  "items": [
+    {
+      "id": "entry-1",
+      "url": "https://example.com/entry-1",
+      "title": "First entry",
+      "summary": "Summary one",
+      "content_text": "Hello world from JSON Feed",
+      "date_published": "2026-02-24T00:00:00Z"
+    },
+    {
+      "id": "entry-2",
+      "url": "https://example.com/entry-2",
+      "title": "Second entry",
+      "summary": "Summary two",
+      "content_html": "<p>Second content</p>",
+      "date_published": "2026-02-24T01:00:00Z"
+    }
+  ]
+}

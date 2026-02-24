@@ -1,3 +1,7 @@
+pub mod fetcher;
+pub mod parser;
+pub mod types;
+
 #[derive(Debug, Clone, Default)]
 pub struct FeedService;
 

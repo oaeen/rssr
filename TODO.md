@@ -23,10 +23,10 @@
 - [x] Step 2 测试验收通过
 
 ## Step 3 Feed 抓取与解析引擎
-- [ ] 实现 RSS/Atom/RDF/JSON Feed 解析
-- [ ] ETag/Last-Modified 条件请求
-- [ ] 去重策略
-- [ ] fixtures 解析测试与重试测试
+- [x] 实现 RSS/Atom/RDF/JSON Feed 解析
+- [x] ETag/Last-Modified 条件请求
+- [x] 去重策略
+- [x] fixtures 解析测试与重试测试
 
 ## Step 4 导入能力（OPML + 常见输入）
 - [x] 下载并固化 OPML/XML 测试样本
