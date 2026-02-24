@@ -297,7 +297,12 @@ impl SourceRepository {
             FROM entries
             WHERE translated_title IS NULL
               OR TRIM(translated_title) = ''
-            ORDER BY COALESCE(published_at, created_at) ASC, id ASC
+            ORDER BY COALESCE(
+              datetime(published_at),
+              datetime(created_at),
+              published_at,
+              created_at
+            ) DESC, id DESC
             LIMIT ?1
             "#,
         )
@@ -785,7 +790,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn untranslated_entries_are_ordered_by_time_ascending() {
+    async fn untranslated_entries_are_ordered_by_time_descending() {
         let repository = SourceRepository::connect("sqlite::memory:")
             .await
             .expect("connect must succeed");
@@ -824,8 +829,8 @@ mod tests {
             .await
             .expect("list untranslated should succeed");
         assert_eq!(untranslated.len(), 2);
-        assert_eq!(untranslated[0].title, "Older title");
-        assert_eq!(untranslated[1].title, "Newer title");
+        assert_eq!(untranslated[0].title, "Newer title");
+        assert_eq!(untranslated[1].title, "Older title");
     }
 
     #[tokio::test]

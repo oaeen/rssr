@@ -30,6 +30,7 @@ const DEFAULT_SYNC_BATCH_LIMIT: u32 = 24;
 const DEFAULT_SYNC_TIMEOUT_SECS: u64 = 12;
 const DEFAULT_SYNC_RETRY_COUNT: u32 = 1;
 const DEFAULT_TITLE_TRANSLATE_INTERVAL_SECS: u64 = 45;
+const DEFAULT_TITLE_TRANSLATE_BATCH_SIZE: i64 = 300;
 
 struct SharedState {
     services: AppServices,
@@ -361,7 +362,11 @@ async fn sync_active_sources(
                 }
                 let title_repository = repository.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = translate_titles_background(&title_repository, 60).await;
+                    let _ = translate_titles_background(
+                        &title_repository,
+                        DEFAULT_TITLE_TRANSLATE_BATCH_SIZE,
+                    )
+                    .await;
                 });
             }
             Err(error) => {
@@ -870,8 +875,11 @@ pub fn run() {
                                     let mut guard = background_runtime.last_error.write().await;
                                     *guard = None;
                                 }
-                                let _ =
-                                    translate_titles_background(&background_repository, 60).await;
+                                let _ = translate_titles_background(
+                                    &background_repository,
+                                    DEFAULT_TITLE_TRANSLATE_BATCH_SIZE,
+                                )
+                                .await;
                             }
                             Err(error) => {
                                 let mut guard = background_runtime.last_error.write().await;
@@ -889,7 +897,11 @@ pub fn run() {
             });
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let _ = translate_titles_background(&title_translate_repository, 120).await;
+                    let _ = translate_titles_background(
+                        &title_translate_repository,
+                        DEFAULT_TITLE_TRANSLATE_BATCH_SIZE,
+                    )
+                    .await;
                     tokio::time::sleep(Duration::from_secs(DEFAULT_TITLE_TRANSLATE_INTERVAL_SECS))
                         .await;
                 }
