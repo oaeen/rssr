@@ -37,19 +37,26 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
           </button>
         ) : null}
       </header>
-      <nav className="settings-tabs" aria-label="设置导航">
-        {SETTINGS_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={activeTab === tab.id ? "tab tab-active" : "tab"}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      <section className="settings-body">{content}</section>
+      <section className="settings-layout">
+        <nav className="settings-nav" aria-label="设置导航">
+          {SETTINGS_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              className={
+                activeTab === tab.id
+                  ? "settings-nav-item settings-nav-item-active"
+                  : "settings-nav-item"
+              }
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              <span>{tab.label}</span>
+              <small>{tab.id === "system" ? "模型、同步与状态" : "管理订阅和批量导入"}</small>
+            </button>
+          ))}
+        </nav>
+        <section className="settings-body">{content}</section>
+      </section>
     </section>
   );
 }

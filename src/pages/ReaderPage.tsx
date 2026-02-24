@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  deleteSource,
   getSyncRuntimeStatus,
   isTauriRuntime,
   listEntries,
@@ -201,6 +202,27 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
     }
   }
 
+  async function onDeleteSourceByContext(source: Source) {
+    if (!canOperate) {
+      return;
+    }
+    const confirmed = window.confirm(`确认删除订阅「${source.title}」？`);
+    if (!confirmed) {
+      return;
+    }
+    setError("");
+    try {
+      await deleteSource(source.id);
+      if (selectedSourceId === source.id) {
+        setSelectedSourceId(undefined);
+      }
+      await refreshSources();
+      await refreshEntries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除订阅失败");
+    }
+  }
+
   if (!canOperate) {
     return (
       <section className="page-grid">
@@ -250,6 +272,11 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                 type="button"
                 className={selectedSourceId === source.id ? "source-item source-item-active" : "source-item"}
                 onClick={() => setSelectedSourceId(source.id)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  void onDeleteSourceByContext(source);
+                }}
+                title="右键可删除订阅"
               >
                 <span className="source-item-main">
                   {iconUrl ? (
