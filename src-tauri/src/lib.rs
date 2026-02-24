@@ -14,14 +14,42 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::Manager;
+use tokio::sync::RwLock;
+use tokio::task::JoinSet;
 
 const LLM_CONFIG_KEY: &str = "llm_config";
+const SYNC_SETTINGS_KEY: &str = "sync_settings";
+
+const DEFAULT_SYNC_INTERVAL_SECS: u64 = 600;
+const DEFAULT_SYNC_MAX_CONCURRENCY: u32 = 6;
+const DEFAULT_SYNC_BATCH_LIMIT: u32 = 24;
+const DEFAULT_SYNC_TIMEOUT_SECS: u64 = 12;
+const DEFAULT_SYNC_RETRY_COUNT: u32 = 1;
 
 struct SharedState {
     services: AppServices,
     source_repository: SourceRepository,
+    sync_runtime: Arc<SyncRuntime>,
+}
+
+struct SyncRuntime {
+    running: AtomicBool,
+    last_report: RwLock<Option<SyncBatchResponse>>,
+    last_error: RwLock<Option<String>>,
+}
+
+impl Default for SyncRuntime {
+    fn default() -> Self {
+        Self {
+            running: AtomicBool::new(false),
+            last_report: RwLock::new(None),
+            last_error: RwLock::new(None),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,6 +135,34 @@ struct SyncBatchResponse {
     synced_sources: usize,
     failed_sources: usize,
     total_upserted_entries: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncSettings {
+    interval_secs: u64,
+    max_concurrency: u32,
+    batch_limit: u32,
+    timeout_secs: u64,
+    retry_count: u32,
+}
+
+impl Default for SyncSettings {
+    fn default() -> Self {
+        Self {
+            interval_secs: DEFAULT_SYNC_INTERVAL_SECS,
+            max_concurrency: DEFAULT_SYNC_MAX_CONCURRENCY,
+            batch_limit: DEFAULT_SYNC_BATCH_LIMIT,
+            timeout_secs: DEFAULT_SYNC_TIMEOUT_SECS,
+            retry_count: DEFAULT_SYNC_RETRY_COUNT,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SyncRuntimeStatus {
+    running: bool,
+    last_report: Option<SyncBatchResponse>,
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -278,12 +334,73 @@ async fn sync_source(source_id: i64, state: tauri::State<'_, SharedState>) -> Re
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("source {source_id} not found"))?;
-    sync_single_source(&state.source_repository, source).await
+    let settings = load_sync_settings(&state.source_repository).await?;
+    sync_single_source(&state.source_repository, source, &settings).await
 }
 
 #[tauri::command]
-async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<SyncBatchResponse, String> {
-    sync_active_sources_internal(&state.source_repository).await
+async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<SyncRuntimeStatus, String> {
+    if state.sync_runtime.running.swap(true, Ordering::SeqCst) {
+        return get_sync_runtime_status(state).await;
+    }
+
+    let repository = state.source_repository.clone();
+    let runtime = state.sync_runtime.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = sync_active_sources_internal(&repository).await;
+        match result {
+            Ok(report) => {
+                {
+                    let mut guard = runtime.last_report.write().await;
+                    *guard = Some(report);
+                }
+                {
+                    let mut guard = runtime.last_error.write().await;
+                    *guard = None;
+                }
+            }
+            Err(error) => {
+                let mut guard = runtime.last_error.write().await;
+                *guard = Some(error);
+            }
+        }
+        runtime.running.store(false, Ordering::SeqCst);
+    });
+
+    get_sync_runtime_status(state).await
+}
+
+#[tauri::command]
+async fn get_sync_runtime_status(
+    state: tauri::State<'_, SharedState>,
+) -> Result<SyncRuntimeStatus, String> {
+    let last_report = state.sync_runtime.last_report.read().await.clone();
+    let last_error = state.sync_runtime.last_error.read().await.clone();
+    Ok(SyncRuntimeStatus {
+        running: state.sync_runtime.running.load(Ordering::SeqCst),
+        last_report,
+        last_error,
+    })
+}
+
+#[tauri::command]
+async fn get_sync_settings(state: tauri::State<'_, SharedState>) -> Result<SyncSettings, String> {
+    load_sync_settings(&state.source_repository).await
+}
+
+#[tauri::command]
+async fn save_sync_settings(
+    settings: SyncSettings,
+    state: tauri::State<'_, SharedState>,
+) -> Result<SyncSettings, String> {
+    let normalized = normalize_sync_settings(settings);
+    let serialized = serde_json::to_string(&normalized).map_err(|error| error.to_string())?;
+    state
+        .source_repository
+        .set_setting(SYNC_SETTINGS_KEY, &serialized)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(normalized)
 }
 
 #[tauri::command]
@@ -444,9 +561,10 @@ fn entry_to_dto(entry: EntryRecord) -> EntryDto {
 async fn sync_single_source(
     repository: &SourceRepository,
     source: SourceRecord,
+    settings: &SyncSettings,
 ) -> Result<SyncSourceResponse, String> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(settings.timeout_secs))
         .build()
         .map_err(|error| error.to_string())?;
 
@@ -455,7 +573,7 @@ async fn sync_single_source(
         &source.feed_url,
         source.etag.as_deref(),
         source.last_modified.as_deref(),
-        2,
+        settings.retry_count as usize,
     )
     .await;
 
@@ -508,23 +626,36 @@ async fn sync_single_source(
 }
 
 async fn sync_active_sources_internal(repository: &SourceRepository) -> Result<SyncBatchResponse, String> {
+    let settings = load_sync_settings(repository).await?;
     let sources = repository
-        .list_sync_candidates()
+        .list_sync_candidates(settings.batch_limit as i64)
         .await
         .map_err(|error| error.to_string())?;
-
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(settings.max_concurrency as usize));
+    let mut join_set = JoinSet::new();
+    for source in sources {
+        let repo = repository.clone();
+        let sem = semaphore.clone();
+        let copied_settings = settings.clone();
+        join_set.spawn(async move {
+            let _permit = sem
+                .acquire_owned()
+                .await
+                .map_err(|error| error.to_string())?;
+            sync_single_source(&repo, source, &copied_settings).await
+        });
+    }
     let mut synced_sources = 0_usize;
     let mut failed_sources = 0_usize;
     let mut total_upserted_entries = 0_usize;
-    for source in sources {
-        match sync_single_source(repository, source).await {
-            Ok(result) => {
+
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok(Ok(report)) => {
                 synced_sources += 1;
-                total_upserted_entries += result.upserted_entries;
+                total_upserted_entries += report.upserted_entries;
             }
-            Err(_) => {
-                failed_sources += 1;
-            }
+            Ok(Err(_)) | Err(_) => failed_sources += 1,
         }
     }
 
@@ -533,6 +664,28 @@ async fn sync_active_sources_internal(repository: &SourceRepository) -> Result<S
         failed_sources,
         total_upserted_entries,
     })
+}
+
+async fn load_sync_settings(repository: &SourceRepository) -> Result<SyncSettings, String> {
+    if let Some(raw) = repository
+        .get_setting(SYNC_SETTINGS_KEY)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        let parsed = serde_json::from_str::<SyncSettings>(&raw).map_err(|error| error.to_string())?;
+        return Ok(normalize_sync_settings(parsed));
+    }
+    Ok(SyncSettings::default())
+}
+
+fn normalize_sync_settings(settings: SyncSettings) -> SyncSettings {
+    SyncSettings {
+        interval_secs: settings.interval_secs.clamp(60, 3600),
+        max_concurrency: settings.max_concurrency.clamp(1, 16),
+        batch_limit: settings.batch_limit.clamp(1, 200),
+        timeout_secs: settings.timeout_secs.clamp(5, 60),
+        retry_count: settings.retry_count.clamp(0, 4),
+    }
 }
 
 async fn resolve_llm_config(
@@ -626,15 +779,41 @@ pub fn run() {
             let repository = tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             let background_repository = repository.clone();
+            let sync_runtime = Arc::new(SyncRuntime::default());
+            let background_runtime = sync_runtime.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let _ = sync_active_sources_internal(&background_repository).await;
-                    tokio::time::sleep(Duration::from_secs(600)).await;
+                    if !background_runtime.running.swap(true, Ordering::SeqCst) {
+                        let result = sync_active_sources_internal(&background_repository).await;
+                        match result {
+                            Ok(report) => {
+                                {
+                                    let mut guard = background_runtime.last_report.write().await;
+                                    *guard = Some(report);
+                                }
+                                {
+                                    let mut guard = background_runtime.last_error.write().await;
+                                    *guard = None;
+                                }
+                            }
+                            Err(error) => {
+                                let mut guard = background_runtime.last_error.write().await;
+                                *guard = Some(error);
+                            }
+                        }
+                        background_runtime.running.store(false, Ordering::SeqCst);
+                    }
+
+                    let settings = load_sync_settings(&background_repository)
+                        .await
+                        .unwrap_or_default();
+                    tokio::time::sleep(Duration::from_secs(settings.interval_secs)).await;
                 }
             });
             app.manage(SharedState {
                 services: AppServices::default(),
                 source_repository: repository,
+                sync_runtime,
             });
             Ok(())
         })
@@ -650,6 +829,9 @@ pub fn run() {
             mark_entry_read,
             sync_source,
             sync_active_sources,
+            get_sync_runtime_status,
+            get_sync_settings,
+            save_sync_settings,
             get_llm_config,
             save_llm_config,
             test_llm_connection,
@@ -663,8 +845,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::hash_llm_input;
+    use super::normalize_sync_settings;
     use super::parse_import_sources;
     use super::ImportRequest;
+    use super::SyncSettings;
 
     #[test]
     fn import_format_parser_accepts_known_aliases() {
@@ -683,5 +867,22 @@ mod tests {
         let a = hash_llm_input("summary", "deepseek-chat", "hello");
         let b = hash_llm_input("summary", "deepseek-chat", "hello");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn sync_settings_are_normalized_to_safe_bounds() {
+        let normalized = normalize_sync_settings(SyncSettings {
+            interval_secs: 1,
+            max_concurrency: 100,
+            batch_limit: 9999,
+            timeout_secs: 1,
+            retry_count: 99,
+        });
+
+        assert_eq!(normalized.interval_secs, 60);
+        assert_eq!(normalized.max_concurrency, 16);
+        assert_eq!(normalized.batch_limit, 200);
+        assert_eq!(normalized.timeout_secs, 5);
+        assert_eq!(normalized.retry_count, 4);
     }
 }

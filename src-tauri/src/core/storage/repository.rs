@@ -171,7 +171,7 @@ impl SourceRepository {
         Ok(())
     }
 
-    pub async fn list_sync_candidates(&self) -> Result<Vec<SourceRecord>, StorageError> {
+    pub async fn list_sync_candidates(&self, limit: i64) -> Result<Vec<SourceRecord>, StorageError> {
         let rows = sqlx::query_as::<_, SourceRecord>(
             r#"
             SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
@@ -192,8 +192,10 @@ impl SourceRepository {
                 ) <= datetime('now')
               )
             ORDER BY id DESC
+            LIMIT ?1
             "#,
         )
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
@@ -696,7 +698,7 @@ mod tests {
         .expect("update should succeed");
 
         let candidates_now = repository
-            .list_sync_candidates()
+            .list_sync_candidates(50)
             .await
             .expect("list candidates should succeed");
         assert!(candidates_now.is_empty());
@@ -714,7 +716,7 @@ mod tests {
         .expect("update should succeed");
 
         let candidates_later = repository
-            .list_sync_candidates()
+            .list_sync_candidates(50)
             .await
             .expect("list candidates should succeed");
         assert_eq!(candidates_later.len(), 1);
