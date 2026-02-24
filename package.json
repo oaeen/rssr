@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm test && pnpm test:rust && pnpm build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
