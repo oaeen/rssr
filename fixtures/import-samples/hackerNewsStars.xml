@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<opml version="2.0">
+	<head>
+		<title>davewiner/hackerNewsStars</title>
+		<description>davewiner's subscription list, hackerNewsStars category. List created by feedlandDatabase v0.8.14.</description>
+		<dateModified>Tue, 24 Feb 2026 15:23:12 GMT</dateModified>
+		</head>
+	<body>
+		<outline type="rss" text="Matthew Garrett" xmlUrl="https://mjg59.dreamwidth.org/data/rss" htmlUrl="https://mjg59.dreamwidth.org/" category="hackernewsstars" />
+		<outline type="rss" text="Keygen Blog" xmlUrl="https://keygen.sh/blog/feed.xml" htmlUrl="https://keygen.sh/blog/" category="hackernewsstars" />
+		<outline type="rss" text="Miguel Grinberg's Blog" xmlUrl="https://blog.miguelgrinberg.com/feed" htmlUrl="https://blog.miguelgrinberg.com/feed" category="hackernewsstars" />
+		<outline type="rss" text="Michael Stapelbergs Website" xmlUrl="https://michael.stapelberg.ch/feed.xml" htmlUrl="https://michael.stapelberg.ch/" category="hackernewsstars" />
+		<outline type="rss" text="Aresluna" xmlUrl="https://aresluna.org/main.rss" htmlUrl="https://www.aresluna.org/" category="hackernewsstars" />
+		<outline type="rss" text="Anil Dash" xmlUrl="https://anildash.com/feed.xml" htmlUrl="https://anildash.com/" category="hackernewsstars" />
+		<outline type="rss" text="Experimental History" xmlUrl="https://www.experimental-history.com/feed" htmlUrl="https://www.experimental-history.com/" category="hackernewsstars" />
+		<outline type="rss" text="Grant Slatton's Blog" xmlUrl="https://grantslatton.com/rss.xml" htmlUrl="https://grantslatton.com/" category="hackernewsstars" />
+		<outline type="rss" text="Simon Tatham's quasi-blog" xmlUrl="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/feed.xml" htmlUrl="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/" category="hackernewsstars" />
+		<outline type="rss" text="Cats with power tools" xmlUrl="https://blog.pixelmelt.dev/rss/" htmlUrl="https://blog.pixelmelt.dev/" category="hackernewsstars" />
+		<outline type="rss" text="Daniel Hooper" xmlUrl="https://danielchasehooper.com/feed.xml" htmlUrl="https://danielchasehooper.com/feed.xml" category="hackernewsstars" />
+		<outline type="rss" text="Martin Alderson" xmlUrl="https://martinalderson.com/feed.xml" htmlUrl="https://martinalderson.com/" category="hackernewsstars" />
+		<outline type="rss" text="Herman's blog" xmlUrl="https://herman.bearblog.dev/feed/" htmlUrl="https://herman.bearblog.dev/" category="hackernewsstars" />
+		<outline type="rss" text="Tom Renner on My place to put things" xmlUrl="https://tomrenner.com/index.xml" htmlUrl="https://tomrenner.com/" category="hackernewsstars" />
+		<outline type="rss" text="Troy Hunt" xmlUrl="https://www.troyhunt.com/rss/" htmlUrl="https://www.troyhunt.com/" category="hackernewsstars" />
+		<outline type="rss" text="Max Bernstein's Blog" xmlUrl="https://bernsteinbear.com/feed.xml" htmlUrl="https://bernsteinbear.com/" category="hackernewsstars" />
+		<outline type="rss" text="Daniel De Laney" xmlUrl="https://danieldelaney.net/feed" htmlUrl="http://danieldelaney.net/" category="hackernewsstars" />
+		<outline type="rss" text="Steve Blank" xmlUrl="https://steveblank.com/feed/" htmlUrl="https://steveblank.com/" category="hackernewsstars" />
+		<outline type="rss" text="Philip Laine" xmlUrl="https://philiplaine.com/index.xml" htmlUrl="https://philiplaine.com/" category="hackernewsstars" />
+		<outline type="rss" text="Works on My Machine" xmlUrl="https://worksonmymachine.substack.com/feed" htmlUrl="https://worksonmymachine.ai/" category="hackernewsstars" />
+		<outline type="rss" text="Refactoring English" xmlUrl="https://refactoringenglish.com/index.xml" htmlUrl="https://refactoringenglish.com/" category="hackernewsstars" />
+		<outline type="rss" text="Beej's Bit Bucket" xmlUrl="https://beej.us/blog/rss.xml" htmlUrl="http://beej.us/blog/" category="hackernewsstars" />
+		<outline type="rss" text="Blog - Daniel Wirtz" xmlUrl="https://danielwirtz.com/rss.xml" htmlUrl="https://danielwirtz.com/blog" category="hackernewsstars" />
+		<outline type="rss" text="Dr Paris Buttfield-Addison" xmlUrl="https://hey.paris/index.xml" htmlUrl="https://hey.paris/" category="hackernewsstars" />
+		<outline type="rss" text="IT Notes" xmlUrl="https://it-notes.dragas.net/feed/" htmlUrl="https://it-notes.dragas.net/" category="hackernewsstars" />
+		<outline type="rss" text="Chad Nauseam Home" xmlUrl="https://chadnauseam.com/rss.xml" htmlUrl="https://chadnauseam.com/" category="hackernewsstars" />
+		<outline type="rss" text="Simone Salis" xmlUrl="https://simone.org/feed/" htmlUrl="https://simone.org/" category="hackernewsstars" />
+		<outline type="rss" text="Bert Hubert's writings" xmlUrl="https://berthub.eu/articles/index.xml" htmlUrl="https://berthub.eu/articles/" category="hackernewsstars" />
+		<outline type="rss" text="Gwern.net Newsletter" xmlUrl="https://gwern.substack.com/feed" htmlUrl="https://gwern.substack.com/" category="hackernewsstars" />
+		<outline type="rss" text="BogdanTheGeek's Blog" xmlUrl="https://bogdanthegeek.github.io/blog/index.xml" htmlUrl="https://bogdanthegeek.github.io/blog/" category="hackernewsstars" />
+		<outline type="rss" text="Hugo Tunius - Blog" xmlUrl="https://hugotunius.se/feed.xml" htmlUrl="https://hugotunius.se/" category="hackernewsstars" />
+		<outline type="rss" text="Old Vintage Computing Research" xmlUrl="https://oldvcr.blogspot.com/feeds/posts/default" htmlUrl="https://oldvcr.blogspot.com/" category="hackernewsstars" />
+		<outline type="rss" text="Fabien Sanglard" xmlUrl="https://fabiensanglard.net/rss.xml" htmlUrl="https://fabiensanglard.net/" category="hackernewsstars" />
+		<outline type="rss" text="Abort Retry Fail" xmlUrl="https://www.abortretry.fail/feed" htmlUrl="https://www.abortretry.fail/" category="hackernewsstars" />
+		<outline type="rss" text="Eli Bendersky's website" xmlUrl="https://eli.thegreenplace.net/feeds/all.atom.xml" htmlUrl="https://eli.thegreenplace.net/" category="hackernewsstars" />
+		<outline type="rss" text="skull's blog" xmlUrl="https://brutecat.com/rss.xml" htmlUrl="https://brutecat.com" category="hackernewsstars" />
+		<outline type="rss" text="Downtown Doug Brown" xmlUrl="https://www.downtowndougbrown.com/feed/" htmlUrl="https://www.downtowndougbrown.com/" category="hackernewsstars" />
+		<outline type="rss" text="the website of jyn" xmlUrl="https://jyn.dev/atom.xml" htmlUrl="https://jyn.dev/" category="hackernewsstars" />
+		<outline type="rss" text="Geoffrey Litt" xmlUrl="https://www.geoffreylitt.com/feed.xml" htmlUrl="https://geoffreylitt.com/" category="hackernewsstars" />
+		<outline type="rss" text="The Silicon Underground" xmlUrl="https://dfarq.homeip.net/feed/" htmlUrl="https://dfarq.homeip.net/" category="hackernewsstars" />
+		<outline type="rss" text="Jim Nielsen’s Blog" xmlUrl="https://blog.jim-nielsen.com/feed.xml" htmlUrl="https://blog.jim-nielsen.com/" category="hackernewsstars" />
+		<outline type="rss" text="The Digital Antiquarian" xmlUrl="https://www.filfre.net/feed/" htmlUrl="https://www.filfre.net/" category="hackernewsstars" />
+		<outline type="rss" text="Paul Graham: Essays" xmlUrl="http://www.aaronsw.com/2002/feeds/pgessays.rss" htmlUrl="http://www.paulgraham.com/" category="hackernewsstars" />
+		<outline type="rss" text="the singularity is nearer" xmlUrl="https://geohot.github.io/blog/feed.xml" htmlUrl="https://geohot.github.io//blog/" category="hackernewsstars" />
+		<outline type="rss" text="Max Woolf's Blog" xmlUrl="https://minimaxir.com/index.xml" htmlUrl="https://minimaxir.com/" category="hackernewsstars" />
+		<outline type="rss" text="Fernando Borretti" xmlUrl="https://borretti.me/feed.xml" htmlUrl="https://borretti.me/" category="hackernewsstars" />
+		<outline type="rss" text="Jayden’s Blog" xmlUrl="https://jayd.ml/feed.xml" htmlUrl="https://jayd.ml/" category="hackernewsstars" />
+		<outline type="rss" text="Dwarkesh Podcast" xmlUrl="https://www.dwarkeshpatel.com/feed" htmlUrl="https://www.dwarkesh.com/" category="hackernewsstars" />
+		<outline type="rss" text="Computer Things" xmlUrl="https://buttondown.com/hillelwayne/rss" htmlUrl="https://buttondown.com/hillelwayne" category="hackernewsstars" />
+		<outline type="rss" text="Entropic Thoughts" xmlUrl="https://entropicthoughts.com/feed.xml" htmlUrl="https://entropicthoughts.com/" category="hackernewsstars" />
+		<outline type="rss" text="Susam Pal" xmlUrl="https://susam.net/feed.xml" htmlUrl="https://susam.net/" category="hackernewsstars" />
+		<outline type="rss" text="Tedium: The Dull Side of the Internet." xmlUrl="https://feed.tedium.co/" htmlUrl="https://tedium.co/" category="hackernewsstars" />
+		<outline type="rss" text="Construction Physics" xmlUrl="https://www.construction-physics.com/feed" htmlUrl="https://www.construction-physics.com/" category="hackernewsstars" />
+		<outline type="rss" text="micahflee" xmlUrl="https://micahflee.com/feed/" htmlUrl="https://micahflee.com/" category="hackernewsstars" />
+		<outline type="rss" text="Andrew Nesbitt" xmlUrl="https://nesbitt.io/feed.xml" htmlUrl="https://nesbitt.io/" category="hackernewsstars" />
+		<outline type="rss" text="Westenberg." xmlUrl="https://joanwestenberg.com/rss" htmlUrl="https://www.joanwestenberg.com/" category="hackernewsstars" />
+		<outline type="rss" text="Matt Godbolt’s blog" xmlUrl="https://xania.org/feed" htmlUrl="http://xania.org/?utm_source=feed&amp;utm_medium=rss" category="hackernewsstars" />
+		<outline type="rss" text="Rakhim's blog" xmlUrl="https://rakhim.exotext.com/rss.xml" htmlUrl="https://rakhim.exotext.com/" category="hackernewsstars" />
+		<outline type="rss" text="Terrible Software" xmlUrl="https://terriblesoftware.org/feed/" htmlUrl="https://terriblesoftware.org/" category="hackernewsstars" />
+		<outline type="rss" text="Evan Hahn (dot com)" xmlUrl="https://evanhahn.com/feed.xml" htmlUrl="https://evanhahn.com/blog/" category="hackernewsstars" />
+		<outline type="rss" text="Derek Thompson | The Atlantic" xmlUrl="https://www.theatlantic.com/feed/author/derek-thompson/" htmlUrl="https://www.theatlantic.com/author/derek-thompson/" category="hackernewsstars" />
+		<outline type="rss" text="matklad" xmlUrl="https://matklad.github.io/feed.xml" htmlUrl="https://matklad.github.io/" category="hackernewsstars" />
+		<outline type="rss" text="John D. Cook" xmlUrl="https://www.johndcook.com/blog/feed/" htmlUrl="https://www.johndcook.com/blog" category="hackernewsstars" />
+		<outline type="rss" text="overreacted — A blog by Dan Abramov" xmlUrl="https://overreacted.io/rss.xml" htmlUrl="https://overreacted.io/" category="hackernewsstars" />
+		<outline type="rss" text="Marcus on AI" xmlUrl="https://garymarcus.substack.com/feed" htmlUrl="https://garymarcus.substack.com/" category="hackernewsstars" />
+		<outline type="rss" text="Mahad Kalam" xmlUrl="https://skyfall.dev/rss.xml" htmlUrl="https://mahadk.com/" category="hackernewsstars" />
+		<outline type="rss" text="Armin Ronacher's Thoughts and Writings" xmlUrl="https://lucumr.pocoo.org/feed.atom" htmlUrl="https://lucumr.pocoo.org/" category="hackernewsstars" />
+		<outline type="rss" text="Ken Shirriff's blog" xmlUrl="https://www.righto.com/feeds/posts/default" htmlUrl="http://www.righto.com/" category="hackernewsstars" />
+		<outline type="rss" text="The Old New Thing" xmlUrl="https://devblogs.microsoft.com/oldnewthing/feed" htmlUrl="https://devblogs.microsoft.com/oldnewthing" category="hackernewsstars" />
+		<outline type="rss" text="Xe Iaso's blog" xmlUrl="https://xeiaso.net/blog.rss" htmlUrl="https://xeiaso.net/" category="hackernewsstars" />
+		<outline type="rss" text="DYNOMIGHT" xmlUrl="https://dynomight.net/feed.xml" htmlUrl="https://dynomight.net/" category="hackernewsstars" />
+		<outline type="rss" text="Mitchell Hashimoto" xmlUrl="https://mitchellh.com/feed.xml" htmlUrl="https://mitchellh.com/" category="hackernewsstars" />
+		<outline type="rss" text="lcamtuf’s thing" xmlUrl="https://lcamtuf.substack.com/feed" htmlUrl="https://lcamtuf.substack.com/" category="hackernewsstars" />
+		<outline type="rss" text="Terence Eden’s Blog" xmlUrl="https://shkspr.mobi/blog/feed/" htmlUrl="https://shkspr.mobi/blog" category="hackernewsstars" />
+		<outline type="rss" text="Maurycy's Blog" xmlUrl="https://maurycyz.com/index.xml" htmlUrl="https://maurycyz.com/" category="hackernewsstars" />
+		<outline type="rss" text="Pluralistic: Daily links from Cory Doctorow" xmlUrl="https://pluralistic.net/feed/" htmlUrl="https://pluralistic.net/" category="hackernewsstars" />
+		<outline type="rss" text="iDiallo.com" xmlUrl="https://idiallo.com/feed.rss" htmlUrl="https://idiallo.com/" category="hackernewsstars" />
+		<outline type="rss" text="" xmlUrl="http://antirez.com/rss" htmlUrl="http://antirez.com/" category="hackernewsstars" />
+		<outline type="rss" text="Eric Migicovsky's Blog RSS Feed" xmlUrl="https://ericmigi.com/rss.xml" htmlUrl="http://github.com/dylang/node-rss" category="hackernewsstars" />
+		<outline type="rss" text="Daring Fireball" xmlUrl="https://daringfireball.net/feeds/main" htmlUrl="https://daringfireball.net/" category="hackernewsstars" />
+		<outline type="rss" text="Krebs on Security" xmlUrl="https://krebsonsecurity.com/feed/" htmlUrl="https://krebsonsecurity.com/" category="hackernewsstars" />
+		<outline type="rss" text="Simon Willison's Weblog" xmlUrl="https://simonwillison.net/atom/everything/" htmlUrl="http://simonwillison.net/" category="hackernewsstars" />
+		<outline type="rss" text="Jeff Geerling" xmlUrl="https://www.jeffgeerling.com/blog.xml" htmlUrl="https://www.jeffgeerling.com/" category="hackernewsstars" />
+		<outline type="rss" text="seangoedecke.com RSS feed" xmlUrl="https://www.seangoedecke.com/rss.xml" htmlUrl="https://seangoedecke.com" category="hackernewsstars" />
+		</body>
+	</opml>

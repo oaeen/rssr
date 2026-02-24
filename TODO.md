@@ -29,7 +29,7 @@
 - [ ] fixtures 解析测试与重试测试
 
 ## Step 4 导入能力（OPML + 常见输入）
-- [ ] 下载并固化 OPML/XML 测试样本
+- [x] 下载并固化 OPML/XML 测试样本
 - [ ] 实现 OPML 导入
 - [ ] 实现 URL/JSON 导入
 - [ ] 导入预览与冲突处理
@@ -47,6 +47,7 @@
 - [ ] 性能与交互测试
 
 ## Step 7 自定义 LLM API Provider 层
+- [x] 保存本地测试配置（`.env.local`：base_url/api_key/model）
 - [ ] Provider 配置模型（base_url/api_key/model）
 - [ ] OpenAI Compatible 请求实现
 - [ ] 设置页连通性测试
