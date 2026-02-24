@@ -283,32 +283,7 @@ async fn sync_source(source_id: i64, state: tauri::State<'_, SharedState>) -> Re
 
 #[tauri::command]
 async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<SyncBatchResponse, String> {
-    let sources = state
-        .source_repository
-        .list_sources()
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let mut synced_sources = 0_usize;
-    let mut failed_sources = 0_usize;
-    let mut total_upserted_entries = 0_usize;
-    for source in sources.into_iter().filter(|source| source.is_active == 1) {
-        match sync_single_source(&state.source_repository, source).await {
-            Ok(result) => {
-                synced_sources += 1;
-                total_upserted_entries += result.upserted_entries;
-            }
-            Err(_) => {
-                failed_sources += 1;
-            }
-        }
-    }
-
-    Ok(SyncBatchResponse {
-        synced_sources,
-        failed_sources,
-        total_upserted_entries,
-    })
+    sync_active_sources_internal(&state.source_repository).await
 }
 
 #[tauri::command]
@@ -532,6 +507,34 @@ async fn sync_single_source(
     Ok(result)
 }
 
+async fn sync_active_sources_internal(repository: &SourceRepository) -> Result<SyncBatchResponse, String> {
+    let sources = repository
+        .list_sync_candidates()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut synced_sources = 0_usize;
+    let mut failed_sources = 0_usize;
+    let mut total_upserted_entries = 0_usize;
+    for source in sources {
+        match sync_single_source(repository, source).await {
+            Ok(result) => {
+                synced_sources += 1;
+                total_upserted_entries += result.upserted_entries;
+            }
+            Err(_) => {
+                failed_sources += 1;
+            }
+        }
+    }
+
+    Ok(SyncBatchResponse {
+        synced_sources,
+        failed_sources,
+        total_upserted_entries,
+    })
+}
+
 async fn resolve_llm_config(
     provided: Option<LlmConfig>,
     repository: &SourceRepository,
@@ -622,6 +625,13 @@ pub fn run() {
             let database_url = build_database_url(app.handle())?;
             let repository = tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            let background_repository = repository.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let _ = sync_active_sources_internal(&background_repository).await;
+                    tokio::time::sleep(Duration::from_secs(600)).await;
+                }
+            });
             app.manage(SharedState {
                 services: AppServices::default(),
                 source_repository: repository,

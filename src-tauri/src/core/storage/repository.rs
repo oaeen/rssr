@@ -160,6 +160,7 @@ impl SourceRepository {
             r#"
             UPDATE sources
             SET failure_count = failure_count + 1,
+                last_synced_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?1
             "#,
@@ -168,6 +169,34 @@ impl SourceRepository {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn list_sync_candidates(&self) -> Result<Vec<SourceRecord>, StorageError> {
+        let rows = sqlx::query_as::<_, SourceRecord>(
+            r#"
+            SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
+            FROM sources
+            WHERE is_active = 1
+              AND (
+                last_synced_at IS NULL
+                OR datetime(
+                  last_synced_at,
+                  '+' || (
+                    CASE
+                      WHEN failure_count <= 1 THEN 1
+                      WHEN failure_count = 2 THEN 5
+                      WHEN failure_count = 3 THEN 15
+                      ELSE 60
+                    END
+                  ) || ' minutes'
+                ) <= datetime('now')
+              )
+            ORDER BY id DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn upsert_entries(
@@ -640,5 +669,54 @@ mod tests {
             .await
             .expect("get cache should succeed");
         assert_eq!(cached.as_deref(), Some("cached text"));
+    }
+
+    #[tokio::test]
+    async fn sync_candidates_respect_backoff_window() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source = repository
+            .upsert_source(&make_source("Backoff Source", "https://backoff.example.com/feed.xml"))
+            .await
+            .expect("create source should succeed");
+
+        sqlx::query(
+            r#"
+            UPDATE sources
+            SET failure_count = 3,
+                last_synced_at = datetime('now'),
+                is_active = 1
+            WHERE id = ?1
+            "#,
+        )
+        .bind(source.id)
+        .execute(&repository.pool)
+        .await
+        .expect("update should succeed");
+
+        let candidates_now = repository
+            .list_sync_candidates()
+            .await
+            .expect("list candidates should succeed");
+        assert!(candidates_now.is_empty());
+
+        sqlx::query(
+            r#"
+            UPDATE sources
+            SET last_synced_at = datetime('now', '-20 minutes')
+            WHERE id = ?1
+            "#,
+        )
+        .bind(source.id)
+        .execute(&repository.pool)
+        .await
+        .expect("update should succeed");
+
+        let candidates_later = repository
+            .list_sync_candidates()
+            .await
+            .expect("list candidates should succeed");
+        assert_eq!(candidates_later.len(), 1);
     }
 }
