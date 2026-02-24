@@ -45,7 +45,11 @@ export function formatEntryTime(value: string | null | undefined): string {
   return ENTRY_TIME_FORMATTER.format(date);
 }
 
-export function ReaderPage() {
+type ReaderPageProps = {
+  onOpenSettings?: () => void;
+};
+
+export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
   const [sources, setSources] = useState<Source[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<number | undefined>(undefined);
@@ -208,6 +212,11 @@ export function ReaderPage() {
           <button type="button" onClick={refreshEntries}>
             刷新
           </button>
+          {onOpenSettings ? (
+            <button type="button" onClick={onOpenSettings}>
+              设置
+            </button>
+          ) : null}
         </div>
         <p className="tiny-muted">
           {syncStatus?.last_report
