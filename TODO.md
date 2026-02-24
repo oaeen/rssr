@@ -5,13 +5,13 @@
 - [x] 创建 `.gitignore`
 - [x] 写入项目执行约束到 `AGENTS.md`
 - [x] 生成 Tauri + React + TypeScript 脚手架
-- [ ] 细化 Rust 模块目录（feed/importer/subscription/llm/storage/sync）
-- [ ] 细化前端目录（app/pages/components/store/services）
-- [ ] 增加 Rust smoke tests（命令与模块初始化）
-- [ ] 增加前端 smoke tests（主页面渲染）
-- [ ] 运行 `pnpm install`
-- [ ] 运行测试并通过
-- [ ] 本地启动并验证基础页面可用
+- [x] 细化 Rust 模块目录（feed/importer/subscription/llm/storage/sync）
+- [x] 细化前端目录（app/pages/components/store/services）
+- [x] 增加 Rust smoke tests（命令与模块初始化）
+- [x] 增加前端 smoke tests（主页面渲染）
+- [x] 运行 `pnpm install`
+- [x] 运行测试并通过
+- [x] 本地启动并验证基础页面可用
 
 ## Step 2 数据模型与持久化层
 - [ ] 设计 SQLite schema 与 migration
