@@ -8,12 +8,42 @@ import {
   markEntryRead,
   summarizeEntry,
   syncActiveSources,
-  translateEntry,
   type Entry,
   type Source,
   type SyncRuntimeStatus,
 } from "../services/tauriApi";
 import { toPlainText, toSafeHtml } from "../utils/richText";
+
+const ENTRY_TIME_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function resolveDisplayTitles(
+  title: string | null | undefined,
+  translatedTitle: string | null | undefined,
+): { primary: string; secondary: string | null } {
+  const original = toPlainText(title) || "Untitled";
+  const translated = toPlainText(translatedTitle);
+  if (!translated || translated === original) {
+    return { primary: original, secondary: null };
+  }
+  return { primary: translated, secondary: original };
+}
+
+export function formatEntryTime(value: string | null | undefined): string {
+  if (!value) {
+    return "未知时间";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "未知时间";
+  }
+  return ENTRY_TIME_FORMATTER.format(date);
+}
 
 export function ReaderPage() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -25,7 +55,6 @@ export function ReaderPage() {
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncRuntimeStatus | null>(null);
   const [summaryResult, setSummaryResult] = useState("");
-  const [translationResult, setTranslationResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -34,6 +63,11 @@ export function ReaderPage() {
   const activeEntry = useMemo(
     () => entries.find((entry) => entry.id === activeEntryId) ?? null,
     [entries, activeEntryId],
+  );
+  const activeTitle = useMemo(
+    () =>
+      activeEntry ? resolveDisplayTitles(activeEntry.title, activeEntry.translated_title) : null,
+    [activeEntry],
   );
   const summaryHtml = useMemo(() => toSafeHtml(activeEntry?.summary), [activeEntry?.summary]);
   const contentHtml = useMemo(() => toSafeHtml(activeEntry?.content), [activeEntry?.content]);
@@ -153,22 +187,6 @@ export function ReaderPage() {
     }
   }
 
-  async function onTranslate() {
-    if (!canOperate || !activeEntry) {
-      return;
-    }
-    setAiLoading(true);
-    setError("");
-    try {
-      const result = await translateEntry(activeEntry.id, "Chinese");
-      setTranslationResult(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 翻译失败");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   if (!canOperate) {
     return (
       <section className="page-grid">
@@ -237,22 +255,27 @@ export function ReaderPage() {
         {loading ? <p>加载中...</p> : null}
         {!loading && entries.length === 0 ? <p>暂无文章，先去订阅并同步。</p> : null}
         <div className="reader-list">
-          {entries.map((entry) => (
-            <button
-              className={entry.id === activeEntryId ? "reader-item reader-item-active" : "reader-item"}
-              key={entry.id}
-              onClick={() => {
-                setActiveEntryId(entry.id);
-                setSummaryResult("");
-                setTranslationResult("");
-              }}
-              type="button"
-            >
-              <strong>{toPlainText(entry.title) || "Untitled"}</strong>
-              <span>{entry.source_title}</span>
-              <span>{entry.is_read ? "已读" : "未读"}</span>
-            </button>
-          ))}
+          {entries.map((entry) => {
+            const title = resolveDisplayTitles(entry.title, entry.translated_title);
+            return (
+              <button
+                className={entry.id === activeEntryId ? "reader-item reader-item-active" : "reader-item"}
+                key={entry.id}
+                onClick={() => {
+                  setActiveEntryId(entry.id);
+                  setSummaryResult("");
+                }}
+                type="button"
+              >
+                <strong>{title.primary}</strong>
+                {title.secondary ? <span className="reader-item-subtitle">{title.secondary}</span> : null}
+                <span>{entry.source_title}</span>
+                <span className="reader-item-meta">
+                  {formatEntryTime(entry.published_at ?? entry.created_at)} · {entry.is_read ? "已读" : "未读"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -262,7 +285,9 @@ export function ReaderPage() {
           <p>选择左侧文章开始阅读。</p>
         ) : (
           <>
-            <h2>{toPlainText(activeEntry.title) || "Untitled"}</h2>
+            <h2>{activeTitle?.primary ?? "Untitled"}</h2>
+            {activeTitle?.secondary ? <p className="article-meta">原题：{activeTitle.secondary}</p> : null}
+            <p className="article-meta">发布时间：{formatEntryTime(activeEntry.published_at ?? activeEntry.created_at)}</p>
             {summaryHtml ? (
               <div className="article-summary article-html" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
             ) : (
@@ -275,27 +300,14 @@ export function ReaderPage() {
               <button onClick={onSummarize} disabled={aiLoading} type="button">
                 {aiLoading ? "处理中..." : "AI 总结"}
               </button>
-              <button onClick={onTranslate} disabled={aiLoading} type="button">
-                {aiLoading ? "处理中..." : "翻译为中文"}
-              </button>
               <a href={activeEntry.link} target="_blank" rel="noreferrer">
                 原文
               </a>
             </div>
-            {(summaryResult || translationResult) && (
+            {summaryResult && (
               <section className="ai-card">
-                {summaryResult ? (
-                  <>
-                    <h3>AI 总结</h3>
-                    <pre>{summaryResult}</pre>
-                  </>
-                ) : null}
-                {translationResult ? (
-                  <>
-                    <h3>AI 翻译</h3>
-                    <pre>{translationResult}</pre>
-                  </>
-                ) : null}
+                <h3>AI 总结</h3>
+                <pre>{summaryResult}</pre>
               </section>
             )}
             <article className="reader-content">
