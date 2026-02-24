@@ -380,6 +380,57 @@ button:hover:not(:disabled) {
   font-size: 13px;
 }
 
+.article-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.article-head-main {
+  min-width: 0;
+}
+
+.article-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.icon-action {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(194, 210, 238, 0.8);
+  background: rgba(255, 255, 255, 0.92);
+  color: #23446f;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.icon-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(227, 238, 255, 0.95);
+}
+
+.icon-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.icon-action svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .reader-content {
   margin-top: 12px;
   border-radius: 12px;
@@ -442,6 +493,7 @@ button:hover:not(:disabled) {
 .source-tree {
   display: grid;
   gap: 6px;
+  grid-auto-rows: minmax(34px, auto);
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -456,15 +508,45 @@ button:hover:not(:disabled) {
   gap: 8px;
   background: rgba(255, 255, 255, 0.65);
   color: #243f5d;
+  min-height: 34px;
+  overflow: hidden;
+}
+
+.source-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.source-item-title {
+  display: block;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.source-item span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.source-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: rgba(223, 233, 248, 0.9);
+}
+
+.source-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6f85a3;
+  font-size: 12px;
+}
+
+.source-item .tiny-muted {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .source-item-active {

@@ -45,6 +45,16 @@ export function formatEntryTime(value: string | null | undefined): string {
   return ENTRY_TIME_FORMATTER.format(date);
 }
 
+export function buildSourceIconUrl(source: Source): string {
+  const candidate = source.site_url?.trim() || source.feed_url.trim();
+  try {
+    const parsed = new URL(candidate);
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsed.hostname)}&sz=64`;
+  } catch {
+    return "";
+  }
+}
+
 type ReaderPageProps = {
   onOpenSettings?: () => void;
 };
@@ -231,17 +241,32 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
           >
             全部文章
           </button>
-          {sources.map((source) => (
-            <button
-              key={source.id}
-              type="button"
-              className={selectedSourceId === source.id ? "source-item source-item-active" : "source-item"}
-              onClick={() => setSelectedSourceId(source.id)}
-            >
-              <span>{source.title}</span>
-              <span className="tiny-muted">{source.failure_count > 0 ? `失败 ${source.failure_count}` : ""}</span>
-            </button>
-          ))}
+          {sources.map((source) => {
+            const iconUrl = buildSourceIconUrl(source);
+            const titleText = source.title.trim() || source.feed_url;
+            return (
+              <button
+                key={source.id}
+                type="button"
+                className={selectedSourceId === source.id ? "source-item source-item-active" : "source-item"}
+                onClick={() => setSelectedSourceId(source.id)}
+              >
+                <span className="source-item-main">
+                  {iconUrl ? (
+                    <img className="source-icon" src={iconUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span className="source-icon source-icon-fallback" aria-hidden="true">
+                      •
+                    </span>
+                  )}
+                  <span className="source-item-title" title={titleText}>
+                    {titleText}
+                  </span>
+                </span>
+                <span className="tiny-muted">{source.failure_count > 0 ? `失败 ${source.failure_count}` : ""}</span>
+              </button>
+            );
+          })}
         </div>
       </aside>
 
@@ -294,25 +319,58 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
           <p>选择左侧文章开始阅读。</p>
         ) : (
           <>
-            <h2>{activeTitle?.primary ?? "Untitled"}</h2>
-            {activeTitle?.secondary ? <p className="article-meta">原题：{activeTitle.secondary}</p> : null}
-            <p className="article-meta">发布时间：{formatEntryTime(activeEntry.published_at ?? activeEntry.created_at)}</p>
+            <header className="article-head">
+              <div className="article-head-main">
+                <h2>{activeTitle?.primary ?? "Untitled"}</h2>
+                {activeTitle?.secondary ? <p className="article-meta">原题：{activeTitle.secondary}</p> : null}
+                <p className="article-meta">发布时间：{formatEntryTime(activeEntry.published_at ?? activeEntry.created_at)}</p>
+              </div>
+              <div className="article-actions">
+                <button
+                  className="icon-action"
+                  onClick={() => onMarkRead(activeEntry, !activeEntry.is_read)}
+                  type="button"
+                  title={activeEntry.is_read ? "标记未读" : "标记已读"}
+                  aria-label={activeEntry.is_read ? "标记未读" : "标记已读"}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 12l2 2 4-4" />
+                    <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
+                  </svg>
+                </button>
+                <button
+                  className="icon-action"
+                  onClick={onSummarize}
+                  disabled={aiLoading}
+                  type="button"
+                  title={aiLoading ? "AI 总结处理中" : "AI 总结"}
+                  aria-label="AI 总结"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
+                  </svg>
+                </button>
+                <a
+                  className="icon-action"
+                  href={activeEntry.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="打开原文"
+                  aria-label="打开原文"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M14 4h6v6" />
+                    <path d="M10 14L20 4" />
+                    <path d="M20 14v6H4V4h6" />
+                  </svg>
+                </a>
+              </div>
+            </header>
             {summaryHtml ? (
               <div className="article-summary article-html" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
             ) : (
               <p>无摘要</p>
             )}
-            <div className="button-row">
-              <button onClick={() => onMarkRead(activeEntry, !activeEntry.is_read)} type="button">
-                {activeEntry.is_read ? "标记未读" : "标记已读"}
-              </button>
-              <button onClick={onSummarize} disabled={aiLoading} type="button">
-                {aiLoading ? "处理中..." : "AI 总结"}
-              </button>
-              <a href={activeEntry.link} target="_blank" rel="noreferrer">
-                原文
-              </a>
-            </div>
             {summaryResult && (
               <section className="ai-card">
                 <h3>AI 总结</h3>
