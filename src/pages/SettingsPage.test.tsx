@@ -8,7 +8,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("设置中心")).toBeInTheDocument();
     expect(screen.getByText("设置")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "订阅与导入" }));
+    fireEvent.click(screen.getByRole("button", { name: /订阅与导入/ }));
     expect(screen.getByText("订阅管理")).toBeInTheDocument();
   });
 });
