@@ -54,7 +54,10 @@ pub fn parse_opml(opml_content: &str) -> Result<Vec<ImportSource>, ImportError> 
         .map_err(|error| ImportError::Opml(error.to_string()))?;
     let mut results = Vec::new();
 
-    for node in doc.descendants().filter(|node| node.has_tag_name("outline")) {
+    for node in doc
+        .descendants()
+        .filter(|node| node.has_tag_name("outline"))
+    {
         let Some(feed_url) = node.attribute("xmlUrl") else {
             continue;
         };

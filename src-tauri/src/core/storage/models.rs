@@ -34,10 +34,17 @@ pub struct EntryRecord {
     pub guid: Option<String>,
     pub link: String,
     pub title: String,
+    pub translated_title: Option<String>,
     pub summary: Option<String>,
     pub content: Option<String>,
     pub published_at: Option<String>,
     pub is_read: i64,
     pub is_starred: i64,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct EntryTitleRecord {
+    pub id: i64,
+    pub title: String,
 }

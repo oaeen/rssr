@@ -57,10 +57,7 @@ pub async fn call_chat_completion(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(config.timeout_secs.max(5)))
         .build()?;
-    let endpoint = format!(
-        "{}/chat/completions",
-        config.base_url.trim_end_matches('/')
-    );
+    let endpoint = format!("{}/chat/completions", config.base_url.trim_end_matches('/'));
 
     let response = client
         .post(endpoint)
@@ -89,13 +86,17 @@ pub async fn call_chat_completion(
         .and_then(|choice| choice.message.content.clone())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| LlmError::InvalidResponse("missing choices[0].message.content".to_string()))?;
+        .ok_or_else(|| {
+            LlmError::InvalidResponse("missing choices[0].message.content".to_string())
+        })?;
     Ok(content)
 }
 
 pub fn validate_config(config: &LlmConfig) -> Result<(), LlmError> {
     if config.base_url.trim().is_empty() {
-        return Err(LlmError::InvalidConfig("base_url cannot be empty".to_string()));
+        return Err(LlmError::InvalidConfig(
+            "base_url cannot be empty".to_string(),
+        ));
     }
     if !config.base_url.starts_with("http://") && !config.base_url.starts_with("https://") {
         return Err(LlmError::InvalidConfig(
@@ -103,7 +104,9 @@ pub fn validate_config(config: &LlmConfig) -> Result<(), LlmError> {
         ));
     }
     if config.api_key.trim().is_empty() {
-        return Err(LlmError::InvalidConfig("api_key cannot be empty".to_string()));
+        return Err(LlmError::InvalidConfig(
+            "api_key cannot be empty".to_string(),
+        ));
     }
     if config.model.trim().is_empty() {
         return Err(LlmError::InvalidConfig("model cannot be empty".to_string()));

@@ -1,6 +1,6 @@
 use sqlx::{sqlite::SqlitePoolOptions, QueryBuilder, Sqlite, SqlitePool};
 
-use super::models::{EntryRecord, NewSource, SourceRecord};
+use super::models::{EntryRecord, EntryTitleRecord, NewSource, SourceRecord};
 use crate::core::feed::types::ParsedEntry;
 
 #[derive(Debug, thiserror::Error)]
@@ -101,9 +101,7 @@ impl SourceRepository {
             return Ok(0);
         }
 
-        let mut query = QueryBuilder::<Sqlite>::new(
-            "UPDATE sources SET is_active = ",
-        );
+        let mut query = QueryBuilder::<Sqlite>::new("UPDATE sources SET is_active = ");
         query.push_bind(i64::from(is_active));
         query.push(", updated_at = CURRENT_TIMESTAMP WHERE id IN (");
         let mut separated = query.separated(", ");
@@ -171,7 +169,10 @@ impl SourceRepository {
         Ok(())
     }
 
-    pub async fn list_sync_candidates(&self, limit: i64) -> Result<Vec<SourceRecord>, StorageError> {
+    pub async fn list_sync_candidates(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<SourceRecord>, StorageError> {
         let rows = sqlx::query_as::<_, SourceRecord>(
             r#"
             SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
@@ -251,6 +252,7 @@ impl SourceRepository {
               e.guid,
               e.link,
               e.title,
+              e.translated_title,
               e.summary,
               e.content,
               e.published_at,
@@ -285,7 +287,49 @@ impl SourceRepository {
         Ok(affected)
     }
 
-    pub async fn get_entry_by_id(&self, entry_id: i64) -> Result<Option<EntryRecord>, StorageError> {
+    pub async fn list_entries_without_translated_title(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<EntryTitleRecord>, StorageError> {
+        let rows = sqlx::query_as::<_, EntryTitleRecord>(
+            r#"
+            SELECT id, title
+            FROM entries
+            WHERE translated_title IS NULL
+              OR TRIM(translated_title) = ''
+            ORDER BY id DESC
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn set_entry_translated_title(
+        &self,
+        entry_id: i64,
+        translated_title: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            r#"
+            UPDATE entries
+            SET translated_title = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(translated_title)
+        .bind(entry_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_entry_by_id(
+        &self,
+        entry_id: i64,
+    ) -> Result<Option<EntryRecord>, StorageError> {
         let row = sqlx::query_as::<_, EntryRecord>(
             r#"
             SELECT
@@ -295,6 +339,7 @@ impl SourceRepository {
               e.guid,
               e.link,
               e.title,
+              e.translated_title,
               e.summary,
               e.content,
               e.published_at,
@@ -313,10 +358,11 @@ impl SourceRepository {
     }
 
     pub async fn get_setting(&self, key: &str) -> Result<Option<String>, StorageError> {
-        let value = sqlx::query_scalar::<_, String>("SELECT value FROM app_settings WHERE key = ?1")
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?;
+        let value =
+            sqlx::query_scalar::<_, String>("SELECT value FROM app_settings WHERE key = ?1")
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(value)
     }
 
@@ -439,7 +485,9 @@ mod tests {
             .fetch_all(&repository.pool)
             .await
             .expect("pragma should succeed");
-        let has_etag = columns.iter().any(|row| row.get::<String, _>("name") == "etag");
+        let has_etag = columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "etag");
         let has_last_modified = columns
             .iter()
             .any(|row| row.get::<String, _>("name") == "last_modified");
@@ -455,19 +503,22 @@ mod tests {
             .await
             .expect("connect must succeed");
         let first = repository
-            .upsert_source(&make_source("Hacker News", "https://news.ycombinator.com/rss"))
+            .upsert_source(&make_source(
+                "Hacker News",
+                "https://news.ycombinator.com/rss",
+            ))
             .await
             .expect("first upsert must succeed");
 
         let second = repository
-            .upsert_source(&make_source("HN Updated", "https://news.ycombinator.com/rss"))
+            .upsert_source(&make_source(
+                "HN Updated",
+                "https://news.ycombinator.com/rss",
+            ))
             .await
             .expect("second upsert must succeed");
 
-        let all = repository
-            .list_sources()
-            .await
-            .expect("list must succeed");
+        let all = repository.list_sources().await.expect("list must succeed");
 
         assert_eq!(all.len(), 1);
         assert_eq!(first.id, second.id);
@@ -480,7 +531,10 @@ mod tests {
             .await
             .expect("connect must succeed");
         let created = repository
-            .upsert_source(&make_source("Rust Blog", "https://blog.rust-lang.org/feed.xml"))
+            .upsert_source(&make_source(
+                "Rust Blog",
+                "https://blog.rust-lang.org/feed.xml",
+            ))
             .await
             .expect("create must succeed");
 
@@ -488,10 +542,7 @@ mod tests {
             .delete_source(created.id)
             .await
             .expect("delete must succeed");
-        let all = repository
-            .list_sources()
-            .await
-            .expect("list must succeed");
+        let all = repository.list_sources().await.expect("list must succeed");
 
         assert_eq!(affected, 1);
         assert!(all.is_empty());
@@ -515,7 +566,10 @@ mod tests {
             .set_sources_active(&[first.id, second.id], false)
             .await
             .expect("batch update should succeed");
-        let rows = repository.list_sources().await.expect("list should succeed");
+        let rows = repository
+            .list_sources()
+            .await
+            .expect("list should succeed");
 
         assert_eq!(affected, 2);
         assert!(rows.iter().all(|row| row.is_active == 0));
@@ -546,12 +600,18 @@ mod tests {
             .upsert_sources_batch(&batch)
             .await
             .expect("batch upsert should succeed");
-        let current = repository.list_sources().await.expect("list should succeed");
+        let current = repository
+            .list_sources()
+            .await
+            .expect("list should succeed");
         let deleted = repository
             .delete_source(current[0].id)
             .await
             .expect("delete should succeed");
-        let after_delete = repository.list_sources().await.expect("list should succeed");
+        let after_delete = repository
+            .list_sources()
+            .await
+            .expect("list should succeed");
 
         assert_eq!(current.len(), 5);
         assert_eq!(deleted, 1);
@@ -564,7 +624,10 @@ mod tests {
             .await
             .expect("connect must succeed");
         let source = repository
-            .upsert_source(&make_source("Reader Source", "https://reader.example.com/feed.xml"))
+            .upsert_source(&make_source(
+                "Reader Source",
+                "https://reader.example.com/feed.xml",
+            ))
             .await
             .expect("source create should succeed");
         let entries = vec![
@@ -619,7 +682,10 @@ mod tests {
             .await
             .expect("connect must succeed");
         let source = repository
-            .upsert_source(&make_source("Perf Source", "https://perf.example.com/feed.xml"))
+            .upsert_source(&make_source(
+                "Perf Source",
+                "https://perf.example.com/feed.xml",
+            ))
             .await
             .expect("source create should succeed");
         let entries: Vec<ParsedEntry> = (0..120)
@@ -652,7 +718,10 @@ mod tests {
             .expect("connect must succeed");
 
         repository
-            .set_setting("llm_config", "{\"base_url\":\"https://api.deepseek.com/v1\"}")
+            .set_setting(
+                "llm_config",
+                "{\"base_url\":\"https://api.deepseek.com/v1\"}",
+            )
             .await
             .expect("set setting should succeed");
         let setting = repository
@@ -674,12 +743,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn entry_title_translation_roundtrip() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source = repository
+            .upsert_source(&make_source(
+                "Translate Source",
+                "https://translate.example.com/feed.xml",
+            ))
+            .await
+            .expect("source create should succeed");
+        let entries = vec![ParsedEntry {
+            id: "entry-1".to_string(),
+            title: "A long English title".to_string(),
+            link: "https://translate.example.com/posts/1".to_string(),
+            summary: None,
+            content: None,
+            published_at: Some("2026-02-24T00:00:00Z".to_string()),
+        }];
+        repository
+            .upsert_entries(source.id, &entries)
+            .await
+            .expect("entry insert should succeed");
+
+        let untranslated = repository
+            .list_entries_without_translated_title(20)
+            .await
+            .expect("list untranslated should succeed");
+        assert_eq!(untranslated.len(), 1);
+
+        repository
+            .set_entry_translated_title(untranslated[0].id, "中文标题")
+            .await
+            .expect("set translated title should succeed");
+        let untranslated_after = repository
+            .list_entries_without_translated_title(20)
+            .await
+            .expect("list untranslated should succeed");
+        assert!(untranslated_after.is_empty());
+    }
+
+    #[tokio::test]
     async fn sync_candidates_respect_backoff_window() {
         let repository = SourceRepository::connect("sqlite::memory:")
             .await
             .expect("connect must succeed");
         let source = repository
-            .upsert_source(&make_source("Backoff Source", "https://backoff.example.com/feed.xml"))
+            .upsert_source(&make_source(
+                "Backoff Source",
+                "https://backoff.example.com/feed.xml",
+            ))
             .await
             .expect("create source should succeed");
 

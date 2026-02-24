@@ -57,6 +57,7 @@ export type Entry = {
   guid: string | null;
   link: string;
   title: string;
+  translated_title: string | null;
   summary: string | null;
   content: string | null;
   published_at: string | null;
@@ -185,13 +186,4 @@ export async function testLlmConnection(config?: LlmConfig): Promise<string> {
 
 export async function summarizeEntry(entryId: number): Promise<string> {
   return invoke<string>("summarize_entry", { entryId });
-}
-
-export async function translateEntry(entryId: number, targetLanguage: string): Promise<string> {
-  return invoke<string>("translate_entry", {
-    request: {
-      entry_id: entryId,
-      target_language: targetLanguage,
-    },
-  });
 }

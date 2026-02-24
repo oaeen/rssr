@@ -134,9 +134,10 @@ mod tests {
         {
             let mut response = Response::new(axum::body::Body::empty());
             *response.status_mut() = StatusCode::NOT_MODIFIED;
-            response
-                .headers_mut()
-                .insert(reqwest::header::ETAG, etag.parse().expect("header must parse"));
+            response.headers_mut().insert(
+                reqwest::header::ETAG,
+                etag.parse().expect("header must parse"),
+            );
             response.headers_mut().insert(
                 LAST_MODIFIED,
                 last_modified.parse().expect("header must parse"),
@@ -150,13 +151,12 @@ mod tests {
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(
             reqwest::header::CONTENT_TYPE,
-            "application/rss+xml"
-                .parse()
-                .expect("header must parse"),
+            "application/rss+xml".parse().expect("header must parse"),
         );
-        response
-            .headers_mut()
-            .insert(reqwest::header::ETAG, etag.parse().expect("header must parse"));
+        response.headers_mut().insert(
+            reqwest::header::ETAG,
+            etag.parse().expect("header must parse"),
+        );
         response.headers_mut().insert(
             LAST_MODIFIED,
             last_modified.parse().expect("header must parse"),

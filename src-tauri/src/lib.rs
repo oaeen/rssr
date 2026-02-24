@@ -1,6 +1,5 @@
 mod core;
 
-use core::AppServices;
 use core::feed::fetcher::{fetch_feed_with_retry, FetchStatus};
 use core::feed::parser::parse_feed_bytes;
 use core::importer::{
@@ -10,6 +9,7 @@ use core::importer::{
 use core::llm::{call_chat_completion, validate_config, LlmConfig};
 use core::storage::models::{EntryRecord, NewSource, SourceRecord};
 use core::storage::repository::SourceRepository;
+use core::AppServices;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
@@ -101,6 +101,7 @@ struct EntryDto {
     guid: Option<String>,
     link: String,
     title: String,
+    translated_title: Option<String>,
     summary: Option<String>,
     content: Option<String>,
     published_at: Option<String>,
@@ -163,12 +164,6 @@ struct SyncRuntimeStatus {
     running: bool,
     last_report: Option<SyncBatchResponse>,
     last_error: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct TranslateRequest {
-    entry_id: i64,
-    target_language: String,
 }
 
 #[tauri::command]
@@ -327,7 +322,10 @@ async fn mark_entry_read(
 }
 
 #[tauri::command]
-async fn sync_source(source_id: i64, state: tauri::State<'_, SharedState>) -> Result<SyncSourceResponse, String> {
+async fn sync_source(
+    source_id: i64,
+    state: tauri::State<'_, SharedState>,
+) -> Result<SyncSourceResponse, String> {
     let source = state
         .source_repository
         .get_source_by_id(source_id)
@@ -339,7 +337,9 @@ async fn sync_source(source_id: i64, state: tauri::State<'_, SharedState>) -> Re
 }
 
 #[tauri::command]
-async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<SyncRuntimeStatus, String> {
+async fn sync_active_sources(
+    state: tauri::State<'_, SharedState>,
+) -> Result<SyncRuntimeStatus, String> {
     if state.sync_runtime.running.swap(true, Ordering::SeqCst) {
         return get_sync_runtime_status(state).await;
     }
@@ -358,6 +358,10 @@ async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<Syn
                     let mut guard = runtime.last_error.write().await;
                     *guard = None;
                 }
+                let title_repository = repository.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = translate_titles_background(&title_repository, 60).await;
+                });
             }
             Err(error) => {
                 let mut guard = runtime.last_error.write().await;
@@ -439,7 +443,10 @@ async fn test_llm_connection(
 }
 
 #[tauri::command]
-async fn summarize_entry(entry_id: i64, state: tauri::State<'_, SharedState>) -> Result<String, String> {
+async fn summarize_entry(
+    entry_id: i64,
+    state: tauri::State<'_, SharedState>,
+) -> Result<String, String> {
     let config = resolve_llm_config(None, &state.source_repository).await?;
     let entry = state
         .source_repository
@@ -447,7 +454,10 @@ async fn summarize_entry(entry_id: i64, state: tauri::State<'_, SharedState>) ->
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("entry {entry_id} not found"))?;
-    let input = build_llm_entry_input(&entry);
+    let article_text = fetch_webpage_text_for_summary(&entry.link, config.timeout_secs)
+        .await
+        .unwrap_or_else(|_| fallback_entry_text(&entry));
+    let input = build_summary_input(&entry, &article_text);
     let hash = hash_llm_input("summary", &config.model, &input);
     if let Some(cached) = state
         .source_repository
@@ -473,53 +483,13 @@ async fn summarize_entry(entry_id: i64, state: tauri::State<'_, SharedState>) ->
     Ok(output)
 }
 
-#[tauri::command]
-async fn translate_entry(
-    request: TranslateRequest,
-    state: tauri::State<'_, SharedState>,
-) -> Result<String, String> {
-    let config = resolve_llm_config(None, &state.source_repository).await?;
-    let entry = state
-        .source_repository
-        .get_entry_by_id(request.entry_id)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("entry {} not found", request.entry_id))?;
-    let input = build_llm_entry_input(&entry);
-    let task_type = format!("translate:{}", request.target_language.to_lowercase());
-    let hash = hash_llm_input(&task_type, &config.model, &input);
-    if let Some(cached) = state
-        .source_repository
-        .get_llm_cache(&task_type, &config.model, &hash)
-        .await
-        .map_err(|error| error.to_string())?
-    {
-        return Ok(cached);
-    }
-
-    let output = call_chat_completion(
-        &config,
-        "You are a professional technical translator.",
-        &format!(
-            "Translate the following article into {}. Keep formatting simple and readable.\n\n{}",
-            request.target_language, input
-        ),
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    state
-        .source_repository
-        .set_llm_cache(&task_type, &config.model, &hash, &output)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(output)
-}
-
 fn parse_import_sources(request: &ImportRequest) -> Result<Vec<ImportSource>, String> {
     match request.format.to_lowercase().as_str() {
         "opml" | "xml" => parse_opml(&request.content).map_err(|error| error.to_string()),
         "url_list" | "urls" | "txt" => Ok(parse_url_list(&request.content)),
-        "json" | "json_list" => parse_json_sources(&request.content).map_err(|error| error.to_string()),
+        "json" | "json_list" => {
+            parse_json_sources(&request.content).map_err(|error| error.to_string())
+        }
         unsupported => Err(format!("unsupported import format: {unsupported}")),
     }
 }
@@ -549,6 +519,7 @@ fn entry_to_dto(entry: EntryRecord) -> EntryDto {
         guid: entry.guid,
         link: entry.link,
         title: entry.title,
+        translated_title: entry.translated_title,
         summary: entry.summary,
         content: entry.content,
         published_at: entry.published_at,
@@ -625,13 +596,17 @@ async fn sync_single_source(
     Ok(result)
 }
 
-async fn sync_active_sources_internal(repository: &SourceRepository) -> Result<SyncBatchResponse, String> {
+async fn sync_active_sources_internal(
+    repository: &SourceRepository,
+) -> Result<SyncBatchResponse, String> {
     let settings = load_sync_settings(repository).await?;
     let sources = repository
         .list_sync_candidates(settings.batch_limit as i64)
         .await
         .map_err(|error| error.to_string())?;
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(settings.max_concurrency as usize));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(
+        settings.max_concurrency as usize,
+    ));
     let mut join_set = JoinSet::new();
     for source in sources {
         let repo = repository.clone();
@@ -666,13 +641,72 @@ async fn sync_active_sources_internal(repository: &SourceRepository) -> Result<S
     })
 }
 
+async fn translate_titles_background(
+    repository: &SourceRepository,
+    limit: i64,
+) -> Result<usize, String> {
+    let config = match get_saved_or_env_llm_config(repository).await? {
+        Some(config) => config,
+        None => return Ok(0),
+    };
+    validate_config(&config).map_err(|error| error.to_string())?;
+    let targets = repository
+        .list_entries_without_translated_title(limit)
+        .await
+        .map_err(|error| error.to_string())?;
+    if targets.is_empty() {
+        return Ok(0);
+    }
+
+    let mut updated = 0_usize;
+    for target in targets {
+        let input = target.title.trim();
+        if input.is_empty() {
+            continue;
+        }
+        let hash = hash_llm_input("title_translate_zh", &config.model, input);
+        let translated = if let Some(cached) = repository
+            .get_llm_cache("title_translate_zh", &config.model, &hash)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            cached
+        } else {
+            let result = call_chat_completion(
+                &config,
+                "You translate English article titles into concise Chinese.",
+                &format!(
+                    "Translate this article title into Chinese and keep it concise. Output only Chinese title.\n\n{}",
+                    input
+                ),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            repository
+                .set_llm_cache("title_translate_zh", &config.model, &hash, &result)
+                .await
+                .map_err(|error| error.to_string())?;
+            result
+        };
+
+        repository
+            .set_entry_translated_title(target.id, translated.trim())
+            .await
+            .map_err(|error| error.to_string())?;
+        updated += 1;
+    }
+
+    Ok(updated)
+}
+
 async fn load_sync_settings(repository: &SourceRepository) -> Result<SyncSettings, String> {
     if let Some(raw) = repository
         .get_setting(SYNC_SETTINGS_KEY)
         .await
         .map_err(|error| error.to_string())?
     {
-        let parsed = serde_json::from_str::<SyncSettings>(&raw).map_err(|error| error.to_string())?;
+        let parsed =
+            serde_json::from_str::<SyncSettings>(&raw).map_err(|error| error.to_string())?;
         return Ok(normalize_sync_settings(parsed));
     }
     Ok(SyncSettings::default())
@@ -729,19 +763,57 @@ async fn get_saved_or_env_llm_config(
     }))
 }
 
-fn build_llm_entry_input(entry: &EntryRecord) -> String {
-    let mut blocks = vec![
-        format!("Title: {}", entry.title),
-        format!("Link: {}", entry.link),
-    ];
+fn fallback_entry_text(entry: &EntryRecord) -> String {
+    let mut blocks = Vec::new();
     if let Some(summary) = &entry.summary {
-        blocks.push(format!("Summary: {summary}"));
+        blocks.push(summary.clone());
     }
     if let Some(content) = &entry.content {
-        let text = content.chars().take(8000).collect::<String>();
-        blocks.push(format!("Content:\n{text}"));
+        blocks.push(content.clone());
+    }
+    if blocks.is_empty() {
+        return entry.title.clone();
     }
     blocks.join("\n\n")
+}
+
+fn build_summary_input(entry: &EntryRecord, article_text: &str) -> String {
+    let body = article_text.chars().take(12000).collect::<String>();
+    format!(
+        "Title: {}\nLink: {}\n\nArticle Text:\n{}",
+        entry.title, entry.link, body
+    )
+}
+
+async fn fetch_webpage_text_for_summary(link: &str, timeout_secs: u64) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs.max(6)))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .get(link)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "fetch webpage status: {}",
+            response.status().as_u16()
+        ));
+    }
+    let html = response.text().await.map_err(|error| error.to_string())?;
+    let text = html2text::from_read(html.as_bytes(), 120);
+    let normalized = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(1200)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if normalized.is_empty() {
+        return Err("empty article text".to_string());
+    }
+    Ok(normalized)
 }
 
 fn hash_llm_input(task_type: &str, model: &str, input: &str) -> String {
@@ -776,8 +848,9 @@ pub fn run() {
         .setup(|app| {
             let _ = dotenvy::from_filename(".env.local");
             let database_url = build_database_url(app.handle())?;
-            let repository = tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
-                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            let repository =
+                tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
+                    .map_err(|error| std::io::Error::other(error.to_string()))?;
             let background_repository = repository.clone();
             let sync_runtime = Arc::new(SyncRuntime::default());
             let background_runtime = sync_runtime.clone();
@@ -795,6 +868,8 @@ pub fn run() {
                                     let mut guard = background_runtime.last_error.write().await;
                                     *guard = None;
                                 }
+                                let _ =
+                                    translate_titles_background(&background_repository, 60).await;
                             }
                             Err(error) => {
                                 let mut guard = background_runtime.last_error.write().await;
@@ -835,8 +910,7 @@ pub fn run() {
             get_llm_config,
             save_llm_config,
             test_llm_connection,
-            summarize_entry,
-            translate_entry
+            summarize_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -844,6 +918,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::storage::models::EntryRecord;
+
+    use super::build_summary_input;
+    use super::fallback_entry_text;
     use super::hash_llm_input;
     use super::normalize_sync_settings;
     use super::parse_import_sources;
@@ -884,5 +962,49 @@ mod tests {
         assert_eq!(normalized.batch_limit, 200);
         assert_eq!(normalized.timeout_secs, 5);
         assert_eq!(normalized.retry_count, 4);
+    }
+
+    #[test]
+    fn fallback_entry_text_prefers_summary_and_content() {
+        let entry = EntryRecord {
+            id: 1,
+            source_id: 1,
+            source_title: "source".to_string(),
+            guid: None,
+            link: "https://example.com/post".to_string(),
+            title: "Post title".to_string(),
+            translated_title: None,
+            summary: Some("summary".to_string()),
+            content: Some("content".to_string()),
+            published_at: None,
+            is_read: 0,
+            is_starred: 0,
+            created_at: "2026-02-24T00:00:00Z".to_string(),
+        };
+        assert_eq!(fallback_entry_text(&entry), "summary\n\ncontent");
+    }
+
+    #[test]
+    fn build_summary_input_is_capped() {
+        let entry = EntryRecord {
+            id: 1,
+            source_id: 1,
+            source_title: "source".to_string(),
+            guid: None,
+            link: "https://example.com/post".to_string(),
+            title: "Post title".to_string(),
+            translated_title: None,
+            summary: None,
+            content: None,
+            published_at: None,
+            is_read: 0,
+            is_starred: 0,
+            created_at: "2026-02-24T00:00:00Z".to_string(),
+        };
+        let huge = "a".repeat(13000);
+        let input = build_summary_input(&entry, &huge);
+        assert!(input.starts_with("Title: Post title"));
+        assert!(input.contains("Article Text:"));
+        assert!(input.len() < 12200);
     }
 }
