@@ -253,6 +253,106 @@ impl SourceRepository {
             .rows_affected();
         Ok(affected)
     }
+
+    pub async fn get_entry_by_id(&self, entry_id: i64) -> Result<Option<EntryRecord>, StorageError> {
+        let row = sqlx::query_as::<_, EntryRecord>(
+            r#"
+            SELECT
+              e.id,
+              e.source_id,
+              s.title AS source_title,
+              e.guid,
+              e.link,
+              e.title,
+              e.summary,
+              e.content,
+              e.published_at,
+              e.is_read,
+              e.is_starred,
+              e.created_at
+            FROM entries e
+            JOIN sources s ON s.id = e.source_id
+            WHERE e.id = ?1
+            "#,
+        )
+        .bind(entry_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>, StorageError> {
+        let value = sqlx::query_scalar::<_, String>("SELECT value FROM app_settings WHERE key = ?1")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(value)
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> Result<(), StorageError> {
+        sqlx::query(
+            r#"
+            INSERT INTO app_settings (key, value)
+            VALUES (?1, ?2)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_llm_cache(
+        &self,
+        task_type: &str,
+        model: &str,
+        input_hash: &str,
+    ) -> Result<Option<String>, StorageError> {
+        let value = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT output_text
+            FROM llm_cache
+            WHERE task_type = ?1
+              AND model = ?2
+              AND input_hash = ?3
+            "#,
+        )
+        .bind(task_type)
+        .bind(model)
+        .bind(input_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(value)
+    }
+
+    pub async fn set_llm_cache(
+        &self,
+        task_type: &str,
+        model: &str,
+        input_hash: &str,
+        output_text: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            r#"
+            INSERT INTO llm_cache (task_type, model, input_hash, output_text)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(task_type, model, input_hash) DO UPDATE SET
+              output_text = excluded.output_text,
+              created_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(task_type)
+        .bind(model)
+        .bind(input_hash)
+        .bind(output_text)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -282,7 +382,7 @@ mod tests {
             SELECT name
             FROM sqlite_master
             WHERE type = 'table'
-              AND name IN ('sources', 'entries', 'llm_cache')
+              AND name IN ('app_settings', 'sources', 'entries', 'llm_cache')
             ORDER BY name
             "#,
         )
@@ -297,6 +397,7 @@ mod tests {
         assert_eq!(
             table_names,
             vec![
+                "app_settings".to_string(),
                 "entries".to_string(),
                 "llm_cache".to_string(),
                 "sources".to_string()
@@ -511,5 +612,33 @@ mod tests {
             .expect("list should succeed");
 
         assert_eq!(limited.len(), 50);
+    }
+
+    #[tokio::test]
+    async fn settings_and_llm_cache_roundtrip() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+
+        repository
+            .set_setting("llm_config", "{\"base_url\":\"https://api.deepseek.com/v1\"}")
+            .await
+            .expect("set setting should succeed");
+        let setting = repository
+            .get_setting("llm_config")
+            .await
+            .expect("get setting should succeed")
+            .expect("setting should exist");
+        assert!(setting.contains("deepseek"));
+
+        repository
+            .set_llm_cache("summary", "deepseek-chat", "abc", "cached text")
+            .await
+            .expect("set cache should succeed");
+        let cached = repository
+            .get_llm_cache("summary", "deepseek-chat", "abc")
+            .await
+            .expect("get cache should succeed");
+        assert_eq!(cached.as_deref(), Some("cached text"));
     }
 }

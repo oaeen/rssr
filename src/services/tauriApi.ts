@@ -84,6 +84,13 @@ export type SyncBatchResponse = {
   total_upserted_entries: number;
 };
 
+export type LlmConfig = {
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_secs: number;
+};
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -136,4 +143,29 @@ export async function syncSource(sourceId: number): Promise<SyncSourceResponse> 
 
 export async function syncActiveSources(): Promise<SyncBatchResponse> {
   return invoke<SyncBatchResponse>("sync_active_sources");
+}
+
+export async function getLlmConfig(): Promise<LlmConfig | null> {
+  return invoke<LlmConfig | null>("get_llm_config");
+}
+
+export async function saveLlmConfig(config: LlmConfig): Promise<void> {
+  return invoke<void>("save_llm_config", { config });
+}
+
+export async function testLlmConnection(config?: LlmConfig): Promise<string> {
+  return invoke<string>("test_llm_connection", { config: config ?? null });
+}
+
+export async function summarizeEntry(entryId: number): Promise<string> {
+  return invoke<string>("summarize_entry", { entryId });
+}
+
+export async function translateEntry(entryId: number, targetLanguage: string): Promise<string> {
+  return invoke<string>("translate_entry", {
+    request: {
+      entry_id: entryId,
+      target_language: targetLanguage,
+    },
+  });
 }

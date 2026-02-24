@@ -4454,11 +4454,13 @@ name = "tauri-app"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dotenvy",
  "feed-rs",
  "reqwest 0.12.28",
  "roxmltree",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tauri",
  "tauri-build",

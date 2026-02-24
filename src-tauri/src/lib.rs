@@ -7,13 +7,17 @@ use core::importer::{
     build_import_preview, normalize_url, parse_json_sources, parse_opml, parse_url_list,
     ImportSource,
 };
+use core::llm::{call_chat_completion, validate_config, LlmConfig};
 use core::storage::models::{EntryRecord, NewSource, SourceRecord};
 use core::storage::repository::SourceRepository;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 use tauri::Manager;
+
+const LLM_CONFIG_KEY: &str = "llm_config";
 
 struct SharedState {
     services: AppServices,
@@ -103,6 +107,12 @@ struct SyncBatchResponse {
     synced_sources: usize,
     failed_sources: usize,
     total_upserted_entries: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TranslateRequest {
+    entry_id: i64,
+    target_language: String,
 }
 
 #[tauri::command]
@@ -301,6 +311,118 @@ async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<Syn
     })
 }
 
+#[tauri::command]
+async fn get_llm_config(state: tauri::State<'_, SharedState>) -> Result<Option<LlmConfig>, String> {
+    get_saved_or_env_llm_config(&state.source_repository).await
+}
+
+#[tauri::command]
+async fn save_llm_config(
+    config: LlmConfig,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    validate_config(&config).map_err(|error| error.to_string())?;
+    let serialized = serde_json::to_string(&config).map_err(|error| error.to_string())?;
+    state
+        .source_repository
+        .set_setting(LLM_CONFIG_KEY, &serialized)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn test_llm_connection(
+    config: Option<LlmConfig>,
+    state: tauri::State<'_, SharedState>,
+) -> Result<String, String> {
+    let resolved = resolve_llm_config(config, &state.source_repository).await?;
+    let response = call_chat_completion(
+        &resolved,
+        "You are a connectivity checker.",
+        "Reply with exactly: ok",
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response)
+}
+
+#[tauri::command]
+async fn summarize_entry(entry_id: i64, state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let config = resolve_llm_config(None, &state.source_repository).await?;
+    let entry = state
+        .source_repository
+        .get_entry_by_id(entry_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("entry {entry_id} not found"))?;
+    let input = build_llm_entry_input(&entry);
+    let hash = hash_llm_input("summary", &config.model, &input);
+    if let Some(cached) = state
+        .source_repository
+        .get_llm_cache("summary", &config.model, &hash)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(cached);
+    }
+
+    let output = call_chat_completion(
+        &config,
+        "You summarize technical articles in concise Chinese.",
+        &format!("请总结下面这篇文章，输出 5 条以内要点：\n\n{input}"),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    state
+        .source_repository
+        .set_llm_cache("summary", &config.model, &hash, &output)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+#[tauri::command]
+async fn translate_entry(
+    request: TranslateRequest,
+    state: tauri::State<'_, SharedState>,
+) -> Result<String, String> {
+    let config = resolve_llm_config(None, &state.source_repository).await?;
+    let entry = state
+        .source_repository
+        .get_entry_by_id(request.entry_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("entry {} not found", request.entry_id))?;
+    let input = build_llm_entry_input(&entry);
+    let task_type = format!("translate:{}", request.target_language.to_lowercase());
+    let hash = hash_llm_input(&task_type, &config.model, &input);
+    if let Some(cached) = state
+        .source_repository
+        .get_llm_cache(&task_type, &config.model, &hash)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(cached);
+    }
+
+    let output = call_chat_completion(
+        &config,
+        "You are a professional technical translator.",
+        &format!(
+            "Translate the following article into {}. Keep formatting simple and readable.\n\n{}",
+            request.target_language, input
+        ),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    state
+        .source_repository
+        .set_llm_cache(&task_type, &config.model, &hash, &output)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
 fn parse_import_sources(request: &ImportRequest) -> Result<Vec<ImportSource>, String> {
     match request.format.to_lowercase().as_str() {
         "opml" | "xml" => parse_opml(&request.content).map_err(|error| error.to_string()),
@@ -410,6 +532,73 @@ async fn sync_single_source(
     Ok(result)
 }
 
+async fn resolve_llm_config(
+    provided: Option<LlmConfig>,
+    repository: &SourceRepository,
+) -> Result<LlmConfig, String> {
+    if let Some(config) = provided {
+        validate_config(&config).map_err(|error| error.to_string())?;
+        return Ok(config);
+    }
+    let config = get_saved_or_env_llm_config(repository)
+        .await?
+        .ok_or_else(|| "llm config is missing".to_string())?;
+    validate_config(&config).map_err(|error| error.to_string())?;
+    Ok(config)
+}
+
+async fn get_saved_or_env_llm_config(
+    repository: &SourceRepository,
+) -> Result<Option<LlmConfig>, String> {
+    if let Some(raw) = repository
+        .get_setting(LLM_CONFIG_KEY)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        let parsed = serde_json::from_str::<LlmConfig>(&raw).map_err(|error| error.to_string())?;
+        return Ok(Some(parsed));
+    }
+
+    let base_url = std::env::var("RSSR_LLM_BASE_URL").unwrap_or_default();
+    let api_key = std::env::var("RSSR_LLM_API_KEY").unwrap_or_default();
+    let model = std::env::var("RSSR_LLM_MODEL").unwrap_or_default();
+    if base_url.trim().is_empty() || api_key.trim().is_empty() || model.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(LlmConfig {
+        base_url,
+        api_key,
+        model,
+        timeout_secs: 30,
+    }))
+}
+
+fn build_llm_entry_input(entry: &EntryRecord) -> String {
+    let mut blocks = vec![
+        format!("Title: {}", entry.title),
+        format!("Link: {}", entry.link),
+    ];
+    if let Some(summary) = &entry.summary {
+        blocks.push(format!("Summary: {summary}"));
+    }
+    if let Some(content) = &entry.content {
+        let text = content.chars().take(8000).collect::<String>();
+        blocks.push(format!("Content:\n{text}"));
+    }
+    blocks.join("\n\n")
+}
+
+fn hash_llm_input(task_type: &str, model: &str, input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(task_type.as_bytes());
+    hasher.update(b"::");
+    hasher.update(model.as_bytes());
+    hasher.update(b"::");
+    hasher.update(input.as_bytes());
+    let bytes = hasher.finalize();
+    format!("{bytes:x}")
+}
+
 fn build_database_url(app_handle: &tauri::AppHandle) -> Result<String, std::io::Error> {
     let app_data_dir = app_handle
         .path()
@@ -429,6 +618,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            let _ = dotenvy::from_filename(".env.local");
             let database_url = build_database_url(app.handle())?;
             let repository = tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
@@ -449,7 +639,12 @@ pub fn run() {
             list_entries,
             mark_entry_read,
             sync_source,
-            sync_active_sources
+            sync_active_sources,
+            get_llm_config,
+            save_llm_config,
+            test_llm_connection,
+            summarize_entry,
+            translate_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -457,6 +652,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::hash_llm_input;
     use super::parse_import_sources;
     use super::ImportRequest;
 
@@ -470,5 +666,12 @@ mod tests {
         };
         let parsed = parse_import_sources(&payload).expect("url alias should parse");
         assert_eq!(parsed.len(), 1);
+    }
+
+    #[test]
+    fn llm_input_hash_is_deterministic() {
+        let a = hash_llm_input("summary", "deepseek-chat", "hello");
+        let b = hash_llm_input("summary", "deepseek-chat", "hello");
+        assert_eq!(a, b);
     }
 }

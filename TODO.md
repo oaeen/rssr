@@ -51,15 +51,15 @@
 
 ## Step 7 自定义 LLM API Provider 层
 - [x] 保存本地测试配置（`.env.local`：base_url/api_key/model）
-- [ ] Provider 配置模型（base_url/api_key/model）
-- [ ] OpenAI Compatible 请求实现
-- [ ] 设置页连通性测试
-- [ ] Provider 合约测试
+- [x] Provider 配置模型（base_url/api_key/model）
+- [x] OpenAI Compatible 请求实现
+- [x] 设置页连通性测试
+- [x] Provider 合约测试
 
 ## Step 8 翻译与总结流水线
-- [ ] 实现 translate/summarize 命令
-- [ ] 任务缓存与重复请求抑制
-- [ ] 功能 E2E 测试
+- [x] 实现 translate/summarize 命令
+- [x] 任务缓存与重复请求抑制
+- [x] 功能 E2E 测试
 
 ## Step 9 后台同步与容错
 - [ ] 定时同步与指数退避

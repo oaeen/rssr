@@ -28,6 +28,8 @@ thiserror = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli", "deflate"] }
 feed-rs = "2"
 roxmltree = "0.20"
+dotenvy = "0.15"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
