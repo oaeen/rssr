@@ -50,6 +50,40 @@ export type ImportExecuteResponse = {
   duplicate_count: number;
 };
 
+export type Entry = {
+  id: number;
+  source_id: number;
+  source_title: string;
+  guid: string | null;
+  link: string;
+  title: string;
+  summary: string | null;
+  content: string | null;
+  published_at: string | null;
+  is_read: boolean;
+  is_starred: boolean;
+  created_at: string;
+};
+
+export type ListEntriesRequest = {
+  source_id?: number;
+  search?: string;
+  unread_only: boolean;
+  limit?: number;
+};
+
+export type SyncSourceResponse = {
+  source_id: number;
+  status: "updated" | "not_modified";
+  upserted_entries: number;
+};
+
+export type SyncBatchResponse = {
+  synced_sources: number;
+  failed_sources: number;
+  total_upserted_entries: number;
+};
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -86,4 +120,20 @@ export async function previewImport(payload: ImportRequest): Promise<ImportPrevi
 
 export async function importSources(payload: ImportRequest): Promise<ImportExecuteResponse> {
   return invoke<ImportExecuteResponse>("import_sources", { request: payload });
+}
+
+export async function listEntries(payload: ListEntriesRequest): Promise<Entry[]> {
+  return invoke<Entry[]>("list_entries", { request: payload });
+}
+
+export async function markEntryRead(entryId: number, isRead: boolean): Promise<number> {
+  return invoke<number>("mark_entry_read", { entryId, isRead });
+}
+
+export async function syncSource(sourceId: number): Promise<SyncSourceResponse> {
+  return invoke<SyncSourceResponse>("sync_source", { sourceId });
+}
+
+export async function syncActiveSources(): Promise<SyncBatchResponse> {
+  return invoke<SyncBatchResponse>("sync_active_sources");
 }

@@ -273,6 +273,74 @@ button:hover:not(:disabled) {
   color: #a93232;
 }
 
+.reader-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(400px, 1.1fr);
+  gap: 12px;
+}
+
+.reader-toolbar {
+  display: grid;
+  gap: 10px;
+}
+
+.reader-list {
+  margin-top: 12px;
+  max-height: 560px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.reader-item {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.76);
+  color: #2f4d6a;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(194, 210, 238, 0.6);
+}
+
+.reader-item span {
+  font-size: 12px;
+}
+
+.reader-item-active {
+  background: #173a6a;
+  color: #fff;
+}
+
+.reader-detail-panel h2 {
+  margin: 0;
+}
+
+.reader-content {
+  margin-top: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(195, 212, 237, 0.65);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 12px;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.reader-content pre {
+  margin: 0;
+  font-family:
+    "SF Pro Text",
+    "Avenir Next",
+    "Helvetica Neue",
+    Helvetica,
+    Arial,
+    sans-serif;
+  white-space: pre-wrap;
+}
+
+.reader-detail-panel a {
+  color: #1f4a84;
+  font-weight: 600;
+}
+
 .inline-error {
   margin: 4px 0 0;
   color: #9d2a2a;
@@ -306,5 +374,9 @@ button:hover:not(:disabled) {
 
   .tabs {
     overflow-x: auto;
+  }
+
+  .reader-layout {
+    grid-template-columns: 1fr;
   }
 }

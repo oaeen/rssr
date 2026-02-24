@@ -1,15 +1,18 @@
 mod core;
 
 use core::AppServices;
+use core::feed::fetcher::{fetch_feed_with_retry, FetchStatus};
+use core::feed::parser::parse_feed_bytes;
 use core::importer::{
     build_import_preview, normalize_url, parse_json_sources, parse_opml, parse_url_list,
     ImportSource,
 };
-use core::storage::models::{NewSource, SourceRecord};
+use core::storage::models::{EntryRecord, NewSource, SourceRecord};
 use core::storage::repository::SourceRepository;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::Manager;
 
 struct SharedState {
@@ -34,6 +37,14 @@ struct ImportRequest {
     is_active: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct ListEntriesRequest {
+    source_id: Option<i64>,
+    search: Option<String>,
+    unread_only: bool,
+    limit: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct SourceDto {
     id: i64,
@@ -43,8 +54,27 @@ struct SourceDto {
     category: Option<String>,
     is_active: bool,
     failure_count: i64,
+    etag: Option<String>,
+    last_modified: Option<String>,
+    last_synced_at: Option<String>,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct EntryDto {
+    id: i64,
+    source_id: i64,
+    source_title: String,
+    guid: Option<String>,
+    link: String,
+    title: String,
+    summary: Option<String>,
+    content: Option<String>,
+    published_at: Option<String>,
+    is_read: bool,
+    is_starred: bool,
+    created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +89,20 @@ struct ImportPreviewResponse {
 struct ImportExecuteResponse {
     imported_count: usize,
     duplicate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SyncSourceResponse {
+    source_id: i64,
+    status: String,
+    upserted_entries: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SyncBatchResponse {
+    synced_sources: usize,
+    failed_sources: usize,
+    total_upserted_entries: usize,
 }
 
 #[tauri::command]
@@ -185,6 +229,78 @@ async fn import_sources(
     })
 }
 
+#[tauri::command]
+async fn list_entries(
+    request: ListEntriesRequest,
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<EntryDto>, String> {
+    let rows = state
+        .source_repository
+        .list_entries(
+            request.source_id,
+            request.search.as_deref(),
+            request.unread_only,
+            request.limit.unwrap_or(300),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(rows.into_iter().map(entry_to_dto).collect())
+}
+
+#[tauri::command]
+async fn mark_entry_read(
+    entry_id: i64,
+    is_read: bool,
+    state: tauri::State<'_, SharedState>,
+) -> Result<u64, String> {
+    state
+        .source_repository
+        .mark_entry_read(entry_id, is_read)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn sync_source(source_id: i64, state: tauri::State<'_, SharedState>) -> Result<SyncSourceResponse, String> {
+    let source = state
+        .source_repository
+        .get_source_by_id(source_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("source {source_id} not found"))?;
+    sync_single_source(&state.source_repository, source).await
+}
+
+#[tauri::command]
+async fn sync_active_sources(state: tauri::State<'_, SharedState>) -> Result<SyncBatchResponse, String> {
+    let sources = state
+        .source_repository
+        .list_sources()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut synced_sources = 0_usize;
+    let mut failed_sources = 0_usize;
+    let mut total_upserted_entries = 0_usize;
+    for source in sources.into_iter().filter(|source| source.is_active == 1) {
+        match sync_single_source(&state.source_repository, source).await {
+            Ok(result) => {
+                synced_sources += 1;
+                total_upserted_entries += result.upserted_entries;
+            }
+            Err(_) => {
+                failed_sources += 1;
+            }
+        }
+    }
+
+    Ok(SyncBatchResponse {
+        synced_sources,
+        failed_sources,
+        total_upserted_entries,
+    })
+}
+
 fn parse_import_sources(request: &ImportRequest) -> Result<Vec<ImportSource>, String> {
     match request.format.to_lowercase().as_str() {
         "opml" | "xml" => parse_opml(&request.content).map_err(|error| error.to_string()),
@@ -203,9 +319,95 @@ fn source_to_dto(source: SourceRecord) -> SourceDto {
         category: source.category,
         is_active: source.is_active == 1,
         failure_count: source.failure_count,
+        etag: source.etag,
+        last_modified: source.last_modified,
+        last_synced_at: source.last_synced_at,
         created_at: source.created_at,
         updated_at: source.updated_at,
     }
+}
+
+fn entry_to_dto(entry: EntryRecord) -> EntryDto {
+    EntryDto {
+        id: entry.id,
+        source_id: entry.source_id,
+        source_title: entry.source_title,
+        guid: entry.guid,
+        link: entry.link,
+        title: entry.title,
+        summary: entry.summary,
+        content: entry.content,
+        published_at: entry.published_at,
+        is_read: entry.is_read == 1,
+        is_starred: entry.is_starred == 1,
+        created_at: entry.created_at,
+    }
+}
+
+async fn sync_single_source(
+    repository: &SourceRepository,
+    source: SourceRecord,
+) -> Result<SyncSourceResponse, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    let fetched = fetch_feed_with_retry(
+        &client,
+        &source.feed_url,
+        source.etag.as_deref(),
+        source.last_modified.as_deref(),
+        2,
+    )
+    .await;
+
+    let result = match fetched {
+        Ok(FetchStatus::NotModified) => {
+            repository
+                .update_source_sync_success(
+                    source.id,
+                    source.etag.as_deref(),
+                    source.last_modified.as_deref(),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            SyncSourceResponse {
+                source_id: source.id,
+                status: "not_modified".to_string(),
+                upserted_entries: 0,
+            }
+        }
+        Ok(FetchStatus::Updated(payload)) => {
+            let parsed = parse_feed_bytes(&payload.body).map_err(|error| error.to_string())?;
+            let upserted_entries = repository
+                .upsert_entries(source.id, &parsed.entries)
+                .await
+                .map_err(|error| error.to_string())?;
+            repository
+                .update_source_sync_success(
+                    source.id,
+                    payload.etag.as_deref(),
+                    payload.last_modified.as_deref(),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            SyncSourceResponse {
+                source_id: source.id,
+                status: "updated".to_string(),
+                upserted_entries,
+            }
+        }
+        Err(error) => {
+            repository
+                .increment_source_failure(source.id)
+                .await
+                .map_err(|inner| inner.to_string())?;
+            return Err(error.to_string());
+        }
+    };
+
+    Ok(result)
 }
 
 fn build_database_url(app_handle: &tauri::AppHandle) -> Result<String, std::io::Error> {
@@ -243,7 +445,11 @@ pub fn run() {
             delete_source,
             set_sources_active,
             preview_import,
-            import_sources
+            import_sources,
+            list_entries,
+            mark_entry_read,
+            sync_source,
+            sync_active_sources
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

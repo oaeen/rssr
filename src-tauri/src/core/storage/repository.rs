@@ -1,6 +1,7 @@
 use sqlx::{sqlite::SqlitePoolOptions, QueryBuilder, Sqlite, SqlitePool};
 
-use super::models::{NewSource, SourceRecord};
+use super::models::{EntryRecord, NewSource, SourceRecord};
+use crate::core::feed::types::ParsedEntry;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -48,7 +49,7 @@ impl SourceRepository {
 
         let record = sqlx::query_as::<_, SourceRecord>(
             r#"
-            SELECT id, title, site_url, feed_url, category, is_active, failure_count, created_at, updated_at
+            SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
             FROM sources
             WHERE feed_url = ?1
             "#,
@@ -63,7 +64,7 @@ impl SourceRepository {
     pub async fn list_sources(&self) -> Result<Vec<SourceRecord>, StorageError> {
         let rows = sqlx::query_as::<_, SourceRecord>(
             r#"
-            SELECT id, title, site_url, feed_url, category, is_active, failure_count, created_at, updated_at
+            SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
             FROM sources
             ORDER BY id DESC
             "#,
@@ -112,6 +113,144 @@ impl SourceRepository {
         separated.push_unseparated(")");
 
         let affected = query.build().execute(&self.pool).await?.rows_affected();
+        Ok(affected)
+    }
+
+    pub async fn get_source_by_id(&self, id: i64) -> Result<Option<SourceRecord>, StorageError> {
+        let row = sqlx::query_as::<_, SourceRecord>(
+            r#"
+            SELECT id, title, site_url, feed_url, category, is_active, failure_count, etag, last_modified, last_synced_at, created_at, updated_at
+            FROM sources
+            WHERE id = ?1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn update_source_sync_success(
+        &self,
+        source_id: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            r#"
+            UPDATE sources
+            SET etag = ?1,
+                last_modified = ?2,
+                last_synced_at = CURRENT_TIMESTAMP,
+                failure_count = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?3
+            "#,
+        )
+        .bind(etag)
+        .bind(last_modified)
+        .bind(source_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn increment_source_failure(&self, source_id: i64) -> Result<(), StorageError> {
+        sqlx::query(
+            r#"
+            UPDATE sources
+            SET failure_count = failure_count + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?1
+            "#,
+        )
+        .bind(source_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn upsert_entries(
+        &self,
+        source_id: i64,
+        entries: &[ParsedEntry],
+    ) -> Result<usize, StorageError> {
+        let mut affected = 0_usize;
+        for entry in entries {
+            sqlx::query(
+                r#"
+                INSERT INTO entries (source_id, guid, link, title, summary, content, published_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ON CONFLICT(source_id, link) DO UPDATE SET
+                  guid = excluded.guid,
+                  title = excluded.title,
+                  summary = excluded.summary,
+                  content = excluded.content,
+                  published_at = excluded.published_at
+                "#,
+            )
+            .bind(source_id)
+            .bind(&entry.id)
+            .bind(&entry.link)
+            .bind(&entry.title)
+            .bind(&entry.summary)
+            .bind(&entry.content)
+            .bind(&entry.published_at)
+            .execute(&self.pool)
+            .await?;
+            affected += 1;
+        }
+        Ok(affected)
+    }
+
+    pub async fn list_entries(
+        &self,
+        source_id: Option<i64>,
+        search: Option<&str>,
+        unread_only: bool,
+        limit: i64,
+    ) -> Result<Vec<EntryRecord>, StorageError> {
+        let keyword = search.unwrap_or("").trim().to_string();
+        let rows = sqlx::query_as::<_, EntryRecord>(
+            r#"
+            SELECT
+              e.id,
+              e.source_id,
+              s.title AS source_title,
+              e.guid,
+              e.link,
+              e.title,
+              e.summary,
+              e.content,
+              e.published_at,
+              e.is_read,
+              e.is_starred,
+              e.created_at
+            FROM entries e
+            JOIN sources s ON s.id = e.source_id
+            WHERE (?1 IS NULL OR e.source_id = ?1)
+              AND (?2 = '' OR e.title LIKE '%' || ?2 || '%' OR IFNULL(e.summary, '') LIKE '%' || ?2 || '%')
+              AND (?3 = 0 OR e.is_read = 0)
+            ORDER BY COALESCE(e.published_at, e.created_at) DESC
+            LIMIT ?4
+            "#,
+        )
+        .bind(source_id)
+        .bind(keyword)
+        .bind(i64::from(unread_only))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn mark_entry_read(&self, entry_id: i64, is_read: bool) -> Result<u64, StorageError> {
+        let affected = sqlx::query("UPDATE entries SET is_read = ?1 WHERE id = ?2")
+            .bind(i64::from(is_read))
+            .bind(entry_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
         Ok(affected)
     }
 }
@@ -163,6 +302,19 @@ mod tests {
                 "sources".to_string()
             ]
         );
+
+        let columns = sqlx::query("PRAGMA table_info(sources)")
+            .fetch_all(&repository.pool)
+            .await
+            .expect("pragma should succeed");
+        let has_etag = columns.iter().any(|row| row.get::<String, _>("name") == "etag");
+        let has_last_modified = columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "last_modified");
+        let has_last_synced_at = columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "last_synced_at");
+        assert!(has_etag && has_last_modified && has_last_synced_at);
     }
 
     #[tokio::test]
@@ -272,5 +424,92 @@ mod tests {
         assert_eq!(current.len(), 5);
         assert_eq!(deleted, 1);
         assert_eq!(after_delete.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn entry_upsert_and_read_filter_flow() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source = repository
+            .upsert_source(&make_source("Reader Source", "https://reader.example.com/feed.xml"))
+            .await
+            .expect("source create should succeed");
+        let entries = vec![
+            ParsedEntry {
+                id: "entry-1".to_string(),
+                title: "Rust release".to_string(),
+                link: "https://reader.example.com/posts/1".to_string(),
+                summary: Some("Rust update".to_string()),
+                content: Some("content 1".to_string()),
+                published_at: Some("2026-02-24T00:00:00Z".to_string()),
+            },
+            ParsedEntry {
+                id: "entry-2".to_string(),
+                title: "AI news".to_string(),
+                link: "https://reader.example.com/posts/2".to_string(),
+                summary: Some("AI summary".to_string()),
+                content: Some("content 2".to_string()),
+                published_at: Some("2026-02-24T01:00:00Z".to_string()),
+            },
+        ];
+        repository
+            .upsert_entries(source.id, &entries)
+            .await
+            .expect("entry upsert should succeed");
+
+        let all = repository
+            .list_entries(Some(source.id), None, false, 50)
+            .await
+            .expect("list all should succeed");
+        let rust_only = repository
+            .list_entries(Some(source.id), Some("Rust"), false, 50)
+            .await
+            .expect("search should succeed");
+        let marked = repository
+            .mark_entry_read(all[0].id, true)
+            .await
+            .expect("mark read should succeed");
+        let unread = repository
+            .list_entries(Some(source.id), None, true, 50)
+            .await
+            .expect("unread filter should succeed");
+
+        assert_eq!(all.len(), 2);
+        assert_eq!(rust_only.len(), 1);
+        assert_eq!(marked, 1);
+        assert_eq!(unread.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn list_entries_respects_limit_for_large_dataset() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source = repository
+            .upsert_source(&make_source("Perf Source", "https://perf.example.com/feed.xml"))
+            .await
+            .expect("source create should succeed");
+        let entries: Vec<ParsedEntry> = (0..120)
+            .map(|index| ParsedEntry {
+                id: format!("entry-{index}"),
+                title: format!("Entry {index}"),
+                link: format!("https://perf.example.com/posts/{index}"),
+                summary: Some(format!("summary {index}")),
+                content: Some(format!("content {index}")),
+                published_at: Some("2026-02-24T00:00:00Z".to_string()),
+            })
+            .collect();
+
+        repository
+            .upsert_entries(source.id, &entries)
+            .await
+            .expect("entry upsert should succeed");
+        let limited = repository
+            .list_entries(Some(source.id), None, false, 50)
+            .await
+            .expect("list should succeed");
+
+        assert_eq!(limited.len(), 50);
     }
 }
