@@ -1,0 +1,28 @@
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Rust / Cargo
+target/
+Cargo.lock
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
