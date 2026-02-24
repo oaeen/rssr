@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { StatCard } from "../components/StatCard";
 import { ImportPage } from "../pages/ImportPage";
 import { ReaderPage } from "../pages/ReaderPage";
 import { AiSettingsPage } from "../pages/AiSettingsPage";
@@ -9,14 +8,14 @@ import { getAppHealth, isTauriRuntime, type HealthReport } from "../services/tau
 import type { AppTab } from "../store";
 
 const TABS: Array<{ id: AppTab; label: string }> = [
+  { id: "reader", label: "文章" },
   { id: "subscriptions", label: "订阅" },
   { id: "import", label: "导入" },
-  { id: "reader", label: "阅读" },
-  { id: "ai", label: "AI 设置" },
+  { id: "settings", label: "设置" },
 ];
 
 export function AppShell() {
-  const [activeTab, setActiveTab] = useState<AppTab>("subscriptions");
+  const [activeTab, setActiveTab] = useState<AppTab>("reader");
   const [health, setHealth] = useState<HealthReport>({});
   const [error, setError] = useState("");
 
@@ -24,65 +23,55 @@ export function AppShell() {
     if (!isTauriRuntime()) {
       return;
     }
-    let disposed = false;
     getAppHealth()
-      .then((report) => {
-        if (!disposed) {
-          setHealth(report);
-        }
-      })
+      .then((report) => setHealth(report))
       .catch((err: unknown) => {
-        if (!disposed) {
-          setError(err instanceof Error ? err.message : "无法获取后端健康状态");
-        }
+        setError(err instanceof Error ? err.message : "无法获取后端健康状态");
       });
-    return () => {
-      disposed = true;
-    };
   }, []);
 
   const page = useMemo(() => {
+    if (activeTab === "reader") {
+      return <ReaderPage />;
+    }
     if (activeTab === "subscriptions") {
       return <SubscriptionsPage />;
     }
     if (activeTab === "import") {
       return <ImportPage />;
     }
-    if (activeTab === "reader") {
-      return <ReaderPage />;
-    }
     return <AiSettingsPage />;
   }, [activeTab]);
 
   return (
-    <main className="app-shell" data-testid="app-shell">
-      <section className="hero">
-        <div className="hero-title-group">
+    <main className="workspace-shell" data-testid="app-shell">
+      <aside className="workspace-nav">
+        <div className="workspace-brand">
           <h1 className="app-title">RSSR</h1>
-          <p className="app-subtitle">跨平台 RSS + AI 翻译总结工作台</p>
+          <p className="tiny-muted">Folo 风格阅读工作台</p>
         </div>
-        <div className="hero-metrics">
+        <nav className="tabs tabs-vertical" aria-label="导航标签">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              className={tab.id === activeTab ? "tab tab-active" : "tab"}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div className="workspace-health">
           {Object.entries(health).map(([name, status]) => (
-            <StatCard key={name} title={name} value={status} />
+            <p key={name} className="tiny-muted">
+              {name}: {status}
+            </p>
           ))}
           {error ? <p className="inline-error">{error}</p> : null}
         </div>
-      </section>
-
-      <nav className="tabs" aria-label="导航标签">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={tab.id === activeTab ? "tab tab-active" : "tab"}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      <section className="content-panel">{page}</section>
+      </aside>
+      <section className="workspace-content">{page}</section>
     </main>
   );
 }

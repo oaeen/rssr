@@ -1,1 +1,1 @@
-export type AppTab = "subscriptions" | "import" | "reader" | "ai";
+export type AppTab = "subscriptions" | "import" | "reader" | "settings";

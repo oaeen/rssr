@@ -84,6 +84,20 @@ export type SyncBatchResponse = {
   total_upserted_entries: number;
 };
 
+export type SyncSettings = {
+  interval_secs: number;
+  max_concurrency: number;
+  batch_limit: number;
+  timeout_secs: number;
+  retry_count: number;
+};
+
+export type SyncRuntimeStatus = {
+  running: boolean;
+  last_report: SyncBatchResponse | null;
+  last_error: string | null;
+};
+
 export type LlmConfig = {
   base_url: string;
   api_key: string;
@@ -141,8 +155,20 @@ export async function syncSource(sourceId: number): Promise<SyncSourceResponse> 
   return invoke<SyncSourceResponse>("sync_source", { sourceId });
 }
 
-export async function syncActiveSources(): Promise<SyncBatchResponse> {
-  return invoke<SyncBatchResponse>("sync_active_sources");
+export async function syncActiveSources(): Promise<SyncRuntimeStatus> {
+  return invoke<SyncRuntimeStatus>("sync_active_sources");
+}
+
+export async function getSyncRuntimeStatus(): Promise<SyncRuntimeStatus> {
+  return invoke<SyncRuntimeStatus>("get_sync_runtime_status");
+}
+
+export async function getSyncSettings(): Promise<SyncSettings> {
+  return invoke<SyncSettings>("get_sync_settings");
+}
+
+export async function saveSyncSettings(settings: SyncSettings): Promise<SyncSettings> {
+  return invoke<SyncSettings>("save_sync_settings", { settings });
 }
 
 export async function getLlmConfig(): Promise<LlmConfig | null> {

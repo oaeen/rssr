@@ -2,49 +2,98 @@ import { FormEvent, useEffect, useState } from "react";
 
 import {
   getLlmConfig,
+  getSyncRuntimeStatus,
+  getSyncSettings,
   isTauriRuntime,
   saveLlmConfig,
-  summarizeEntry,
+  saveSyncSettings,
+  syncActiveSources,
   testLlmConnection,
-  translateEntry,
   type LlmConfig,
+  type SyncRuntimeStatus,
+  type SyncSettings,
 } from "../services/tauriApi";
 
-const DEFAULT_CONFIG: LlmConfig = {
+const DEFAULT_LLM_CONFIG: LlmConfig = {
   base_url: "https://api.deepseek.com/v1",
   api_key: "",
   model: "deepseek-chat",
   timeout_secs: 30,
 };
 
+const DEFAULT_SYNC_SETTINGS: SyncSettings = {
+  interval_secs: 600,
+  max_concurrency: 6,
+  batch_limit: 24,
+  timeout_secs: 12,
+  retry_count: 1,
+};
+
 export function AiSettingsPage() {
-  const [config, setConfig] = useState<LlmConfig>(DEFAULT_CONFIG);
-  const [entryId, setEntryId] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState("Chinese");
+  const [llmConfig, setLlmConfig] = useState<LlmConfig>(DEFAULT_LLM_CONFIG);
+  const [syncSettings, setSyncSettings] = useState<SyncSettings>(DEFAULT_SYNC_SETTINGS);
+  const [syncStatus, setSyncStatus] = useState<SyncRuntimeStatus | null>(null);
   const [testResult, setTestResult] = useState("");
-  const [summaryResult, setSummaryResult] = useState("");
-  const [translationResult, setTranslationResult] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const canOperate = isTauriRuntime();
+
+  async function refreshRuntimeStatus() {
+    if (!canOperate) {
+      return;
+    }
+    try {
+      const status = await getSyncRuntimeStatus();
+      setSyncStatus(status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "获取同步状态失败");
+    }
+  }
 
   useEffect(() => {
     if (!canOperate) {
       return;
     }
-    getLlmConfig()
-      .then((saved) => {
-        if (saved) {
-          setConfig(saved);
+    Promise.all([getLlmConfig(), getSyncSettings(), getSyncRuntimeStatus()])
+      .then(([savedLlm, savedSync, runtime]) => {
+        if (savedLlm) {
+          setLlmConfig(savedLlm);
         }
+        setSyncSettings(savedSync);
+        setSyncStatus(runtime);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "加载 LLM 配置失败");
+        setError(err instanceof Error ? err.message : "加载设置失败");
       });
+
+    const timer = window.setInterval(() => {
+      refreshRuntimeStatus();
+    }, 2500);
+    return () => {
+      window.clearInterval(timer);
+    };
   }, []);
 
-  async function onSaveConfig(event: FormEvent<HTMLFormElement>) {
+  async function onSaveLlm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canOperate) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setTestResult("");
+    try {
+      await saveLlmConfig(llmConfig);
+      setTestResult("LLM 配置已保存");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存 LLM 配置失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSaveSync(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canOperate) {
       return;
@@ -52,54 +101,40 @@ export function AiSettingsPage() {
     setSaving(true);
     setError("");
     try {
-      await saveLlmConfig(config);
-      setTestResult("配置已保存");
+      const normalized = await saveSyncSettings(syncSettings);
+      setSyncSettings(normalized);
+      setTestResult("同步配置已保存");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存配置失败");
+      setError(err instanceof Error ? err.message : "保存同步配置失败");
     } finally {
       setSaving(false);
     }
   }
 
-  async function onTestConnection() {
+  async function onTestLlm() {
     if (!canOperate) {
       return;
     }
     setError("");
     setTestResult("");
     try {
-      const result = await testLlmConnection(config);
+      const result = await testLlmConnection(llmConfig);
       setTestResult(`连通性测试成功：${result}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "连通性测试失败");
     }
   }
 
-  async function onSummarize() {
-    if (!canOperate || !entryId.trim()) {
+  async function onManualSync() {
+    if (!canOperate) {
       return;
     }
     setError("");
-    setSummaryResult("");
     try {
-      const result = await summarizeEntry(Number(entryId));
-      setSummaryResult(result);
+      const status = await syncActiveSources();
+      setSyncStatus(status);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "总结失败");
-    }
-  }
-
-  async function onTranslate() {
-    if (!canOperate || !entryId.trim()) {
-      return;
-    }
-    setError("");
-    setTranslationResult("");
-    try {
-      const result = await translateEntry(Number(entryId), targetLanguage);
-      setTranslationResult(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "翻译失败");
+      setError(err instanceof Error ? err.message : "启动同步失败");
     }
   }
 
@@ -107,7 +142,7 @@ export function AiSettingsPage() {
     return (
       <section className="page-grid">
         <article className="page-card">
-          <h2>AI Provider 设置</h2>
+          <h2>设置</h2>
           <p>当前是浏览器测试环境，Tauri 命令不可用。请在桌面端运行查看完整功能。</p>
         </article>
       </section>
@@ -117,35 +152,120 @@ export function AiSettingsPage() {
   return (
     <section className="page-grid">
       <article className="page-card">
-        <h2>OpenAI Compatible 配置</h2>
-        <form className="form-grid" onSubmit={onSaveConfig}>
+        <h2>同步状态</h2>
+        <p>{syncStatus?.running ? "同步进行中..." : "同步空闲"}</p>
+        {syncStatus?.last_report ? (
+          <p>
+            最近一次：成功 {syncStatus.last_report.synced_sources}，失败{" "}
+            {syncStatus.last_report.failed_sources}，写入文章{" "}
+            {syncStatus.last_report.total_upserted_entries}
+          </p>
+        ) : null}
+        {syncStatus?.last_error ? <p className="inline-error">{syncStatus.last_error}</p> : null}
+        <div className="button-row">
+          <button type="button" onClick={onManualSync}>
+            手动触发同步
+          </button>
+          <button type="button" onClick={refreshRuntimeStatus}>
+            刷新状态
+          </button>
+        </div>
+      </article>
+
+      <article className="page-card">
+        <h2>同步参数</h2>
+        <form className="form-grid" onSubmit={onSaveSync}>
+          <input
+            type="number"
+            value={syncSettings.interval_secs}
+            onChange={(event) =>
+              setSyncSettings((current) => ({
+                ...current,
+                interval_secs: Number(event.target.value || 600),
+              }))
+            }
+            placeholder="同步间隔（秒）"
+          />
+          <input
+            type="number"
+            value={syncSettings.max_concurrency}
+            onChange={(event) =>
+              setSyncSettings((current) => ({
+                ...current,
+                max_concurrency: Number(event.target.value || 6),
+              }))
+            }
+            placeholder="并发数"
+          />
+          <input
+            type="number"
+            value={syncSettings.batch_limit}
+            onChange={(event) =>
+              setSyncSettings((current) => ({
+                ...current,
+                batch_limit: Number(event.target.value || 24),
+              }))
+            }
+            placeholder="每轮最大源数"
+          />
+          <input
+            type="number"
+            value={syncSettings.timeout_secs}
+            onChange={(event) =>
+              setSyncSettings((current) => ({
+                ...current,
+                timeout_secs: Number(event.target.value || 12),
+              }))
+            }
+            placeholder="请求超时（秒）"
+          />
+          <input
+            type="number"
+            value={syncSettings.retry_count}
+            onChange={(event) =>
+              setSyncSettings((current) => ({
+                ...current,
+                retry_count: Number(event.target.value || 1),
+              }))
+            }
+            placeholder="重试次数"
+          />
+          <button type="submit" disabled={saving}>
+            保存同步配置
+          </button>
+        </form>
+      </article>
+
+      <article className="page-card page-wide">
+        <h2>LLM Provider（OpenAI Compatible）</h2>
+        <form className="form-grid" onSubmit={onSaveLlm}>
           <input
             placeholder="Base URL"
-            value={config.base_url}
+            value={llmConfig.base_url}
             onChange={(event) =>
-              setConfig((current) => ({ ...current, base_url: event.target.value }))
+              setLlmConfig((current) => ({ ...current, base_url: event.target.value }))
             }
           />
           <input
             placeholder="API Key"
-            value={config.api_key}
+            value={llmConfig.api_key}
             onChange={(event) =>
-              setConfig((current) => ({ ...current, api_key: event.target.value }))
+              setLlmConfig((current) => ({ ...current, api_key: event.target.value }))
             }
           />
           <input
             placeholder="Model"
-            value={config.model}
+            value={llmConfig.model}
             onChange={(event) =>
-              setConfig((current) => ({ ...current, model: event.target.value }))
+              setLlmConfig((current) => ({ ...current, model: event.target.value }))
             }
           />
           <input
             placeholder="超时时间（秒）"
             type="number"
-            value={config.timeout_secs}
+            value={llmConfig.timeout_secs}
             onChange={(event) =>
-              setConfig((current) => ({
+              setLlmConfig((current) => ({
                 ...current,
                 timeout_secs: Number(event.target.value || 30),
               }))
@@ -153,49 +273,15 @@ export function AiSettingsPage() {
           />
           <div className="button-row">
             <button type="submit" disabled={saving}>
-              {saving ? "保存中..." : "保存配置"}
+              保存 LLM 配置
             </button>
-            <button type="button" onClick={onTestConnection}>
+            <button type="button" onClick={onTestLlm}>
               测试连通性
             </button>
           </div>
         </form>
         {testResult ? <p>{testResult}</p> : null}
         {error ? <p className="inline-error">{error}</p> : null}
-      </article>
-
-      <article className="page-card">
-        <h2>翻译与总结</h2>
-        <div className="form-grid">
-          <input
-            placeholder="文章 ID（来自阅读页）"
-            value={entryId}
-            onChange={(event) => setEntryId(event.target.value)}
-          />
-          <input
-            placeholder="目标语言（例如 Chinese / Japanese）"
-            value={targetLanguage}
-            onChange={(event) => setTargetLanguage(event.target.value)}
-          />
-          <div className="button-row">
-            <button onClick={onSummarize} type="button">
-              生成总结
-            </button>
-            <button onClick={onTranslate} type="button">
-              生成翻译
-            </button>
-          </div>
-          {summaryResult ? (
-            <article className="reader-content">
-              <pre>{summaryResult}</pre>
-            </article>
-          ) : null}
-          {translationResult ? (
-            <article className="reader-content">
-              <pre>{translationResult}</pre>
-            </article>
-          ) : null}
-        </div>
       </article>
     </section>
   );
