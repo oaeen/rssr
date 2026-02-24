@@ -1,3 +1,6 @@
+pub mod models;
+pub mod repository;
+
 #[derive(Debug, Clone, Default)]
 pub struct StorageService;
 

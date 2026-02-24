@@ -14,9 +14,13 @@
 - [x] 本地启动并验证基础页面可用
 
 ## Step 2 数据模型与持久化层
-- [ ] 设计 SQLite schema 与 migration
-- [ ] 实现 repository 抽象与基础 CRUD
-- [ ] migration + repository tests
+- [x] 设计 SQLite schema（sources/entries/llm_cache）与约束
+- [x] 新增 migration 文件并接入启动迁移能力
+- [x] 实现 `SourceRepository` 基础 CRUD（先做 upsert/list/delete）
+- [x] 实现去重约束（feed_url 唯一）
+- [x] 增加 migration 测试（表与约束存在）
+- [x] 增加 repository 测试（幂等 upsert、list、delete）
+- [x] Step 2 测试验收通过
 
 ## Step 3 Feed 抓取与解析引擎
 - [ ] 实现 RSS/Atom/RDF/JSON Feed 解析

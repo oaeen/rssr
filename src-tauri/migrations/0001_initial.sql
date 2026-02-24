@@ -1,0 +1,37 @@
+CREATE TABLE IF NOT EXISTS sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  site_url TEXT,
+  feed_url TEXT NOT NULL UNIQUE,
+  category TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id INTEGER NOT NULL,
+  guid TEXT,
+  link TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  content TEXT,
+  published_at TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  is_starred INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(source_id, link),
+  FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS llm_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_type TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  output_text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(task_type, model, input_hash)
+);
