@@ -398,18 +398,17 @@ button:hover:not(:disabled) {
 }
 
 .icon-action {
-  min-width: 36px;
-  height: 36px;
-  padding: 0 10px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   border-radius: 10px;
   border: 1px solid rgba(194, 210, 238, 0.8);
   background: rgba(255, 255, 255, 0.92);
   color: #23446f;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: transform 140ms ease, background 140ms ease;
@@ -428,22 +427,13 @@ button:hover:not(:disabled) {
 }
 
 .icon-action svg {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.icon-action-label {
-  line-height: 1;
-}
-
-.icon-action-link {
-  width: 36px;
-  padding: 0;
 }
 
 .reader-content {

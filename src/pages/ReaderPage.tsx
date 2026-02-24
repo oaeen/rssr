@@ -364,7 +364,6 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                     <path d="M9 12l2 2 4-4" />
                     <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
                   </svg>
-                  <span className="icon-action-label">{activeEntry.is_read ? "未读" : "已读"}</span>
                 </button>
                 <button
                   className="icon-action"
@@ -377,10 +376,9 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
                   </svg>
-                  <span className="icon-action-label">AI 总结</span>
                 </button>
                 <a
-                  className="icon-action icon-action-link"
+                  className="icon-action"
                   href={activeEntry.link}
                   target="_blank"
                   rel="noreferrer"
