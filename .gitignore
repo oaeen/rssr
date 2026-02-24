@@ -1,28 +1,29 @@
-# Node / Frontend
-node_modules/
-dist/
-.vite/
+# Logs
+logs
 *.log
 npm-debug.log*
-pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Env / secrets
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+target/
+src-tauri/target/
 .env
 .env.*
 !.env.example
-
-# Rust / Cargo
-target/
-Cargo.lock
-
-# Tauri build artifacts
-src-tauri/target/
-src-tauri/gen/
-src-tauri/binaries/
-
-# OS / Editor
-.DS_Store
-.idea/
-.vscode/

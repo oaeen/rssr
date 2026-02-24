@@ -4,9 +4,13 @@
 - [x] 初始化 Git 仓库
 - [x] 创建 `.gitignore`
 - [x] 写入项目执行约束到 `AGENTS.md`
-- [ ] 生成 Tauri + React + TypeScript 脚手架
-- [ ] 建立基础目录结构与模块边界
-- [ ] 增加 Rust/前端 smoke tests
+- [x] 生成 Tauri + React + TypeScript 脚手架
+- [ ] 细化 Rust 模块目录（feed/importer/subscription/llm/storage/sync）
+- [ ] 细化前端目录（app/pages/components/store/services）
+- [ ] 增加 Rust smoke tests（命令与模块初始化）
+- [ ] 增加前端 smoke tests（主页面渲染）
+- [ ] 运行 `pnpm install`
+- [ ] 运行测试并通过
 - [ ] 本地启动并验证基础页面可用
 
 ## Step 2 数据模型与持久化层
