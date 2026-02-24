@@ -297,7 +297,7 @@ impl SourceRepository {
             FROM entries
             WHERE translated_title IS NULL
               OR TRIM(translated_title) = ''
-            ORDER BY id DESC
+            ORDER BY COALESCE(published_at, created_at) ASC, id ASC
             LIMIT ?1
             "#,
         )
@@ -782,6 +782,50 @@ mod tests {
             .await
             .expect("list untranslated should succeed");
         assert!(untranslated_after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn untranslated_entries_are_ordered_by_time_ascending() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source = repository
+            .upsert_source(&make_source(
+                "Order Source",
+                "https://order.example.com/feed.xml",
+            ))
+            .await
+            .expect("source create should succeed");
+        let entries = vec![
+            ParsedEntry {
+                id: "entry-new".to_string(),
+                title: "Newer title".to_string(),
+                link: "https://order.example.com/posts/new".to_string(),
+                summary: None,
+                content: None,
+                published_at: Some("2026-02-24T02:00:00Z".to_string()),
+            },
+            ParsedEntry {
+                id: "entry-old".to_string(),
+                title: "Older title".to_string(),
+                link: "https://order.example.com/posts/old".to_string(),
+                summary: None,
+                content: None,
+                published_at: Some("2026-02-24T00:00:00Z".to_string()),
+            },
+        ];
+        repository
+            .upsert_entries(source.id, &entries)
+            .await
+            .expect("entry insert should succeed");
+
+        let untranslated = repository
+            .list_entries_without_translated_title(20)
+            .await
+            .expect("list untranslated should succeed");
+        assert_eq!(untranslated.len(), 2);
+        assert_eq!(untranslated[0].title, "Older title");
+        assert_eq!(untranslated[1].title, "Newer title");
     }
 
     #[tokio::test]

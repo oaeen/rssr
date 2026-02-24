@@ -29,6 +29,7 @@ const DEFAULT_SYNC_MAX_CONCURRENCY: u32 = 6;
 const DEFAULT_SYNC_BATCH_LIMIT: u32 = 24;
 const DEFAULT_SYNC_TIMEOUT_SECS: u64 = 12;
 const DEFAULT_SYNC_RETRY_COUNT: u32 = 1;
+const DEFAULT_TITLE_TRANSLATE_INTERVAL_SECS: u64 = 45;
 
 struct SharedState {
     services: AppServices,
@@ -852,6 +853,7 @@ pub fn run() {
                 tauri::async_runtime::block_on(SourceRepository::connect(&database_url))
                     .map_err(|error| std::io::Error::other(error.to_string()))?;
             let background_repository = repository.clone();
+            let title_translate_repository = repository.clone();
             let sync_runtime = Arc::new(SyncRuntime::default());
             let background_runtime = sync_runtime.clone();
             tauri::async_runtime::spawn(async move {
@@ -883,6 +885,13 @@ pub fn run() {
                         .await
                         .unwrap_or_default();
                     tokio::time::sleep(Duration::from_secs(settings.interval_secs)).await;
+                }
+            });
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let _ = translate_titles_background(&title_translate_repository, 120).await;
+                    tokio::time::sleep(Duration::from_secs(DEFAULT_TITLE_TRANSLATE_INTERVAL_SECS))
+                        .await;
                 }
             });
             app.manage(SharedState {
