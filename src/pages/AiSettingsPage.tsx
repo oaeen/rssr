@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import {
   getLlmConfig,
+  getAppHealth,
   getSyncRuntimeStatus,
   getSyncSettings,
   isTauriRuntime,
@@ -9,6 +10,7 @@ import {
   saveSyncSettings,
   syncActiveSources,
   testLlmConnection,
+  type HealthReport,
   type LlmConfig,
   type SyncRuntimeStatus,
   type SyncSettings,
@@ -33,6 +35,7 @@ export function AiSettingsPage() {
   const [llmConfig, setLlmConfig] = useState<LlmConfig>(DEFAULT_LLM_CONFIG);
   const [syncSettings, setSyncSettings] = useState<SyncSettings>(DEFAULT_SYNC_SETTINGS);
   const [syncStatus, setSyncStatus] = useState<SyncRuntimeStatus | null>(null);
+  const [health, setHealth] = useState<HealthReport>({});
   const [testResult, setTestResult] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -55,13 +58,14 @@ export function AiSettingsPage() {
     if (!canOperate) {
       return;
     }
-    Promise.all([getLlmConfig(), getSyncSettings(), getSyncRuntimeStatus()])
-      .then(([savedLlm, savedSync, runtime]) => {
+    Promise.all([getLlmConfig(), getSyncSettings(), getSyncRuntimeStatus(), getAppHealth()])
+      .then(([savedLlm, savedSync, runtime, healthReport]) => {
         if (savedLlm) {
           setLlmConfig(savedLlm);
         }
         setSyncSettings(savedSync);
         setSyncStatus(runtime);
+        setHealth(healthReport);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "加载设置失败");
@@ -151,6 +155,15 @@ export function AiSettingsPage() {
 
   return (
     <section className="page-grid">
+      <article className="page-card">
+        <h2>系统状态</h2>
+        {Object.entries(health).map(([name, status]) => (
+          <p key={name}>
+            {name}: {status}
+          </p>
+        ))}
+      </article>
+
       <article className="page-card">
         <h2>同步状态</h2>
         <p>{syncStatus?.running ? "同步进行中..." : "同步空闲"}</p>

@@ -13,6 +13,7 @@ import {
   type Source,
   type SyncRuntimeStatus,
 } from "../services/tauriApi";
+import { toPlainText, toSafeHtml } from "../utils/richText";
 
 export function ReaderPage() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -34,6 +35,8 @@ export function ReaderPage() {
     () => entries.find((entry) => entry.id === activeEntryId) ?? null,
     [entries, activeEntryId],
   );
+  const summaryHtml = useMemo(() => toSafeHtml(activeEntry?.summary), [activeEntry?.summary]);
+  const contentHtml = useMemo(() => toSafeHtml(activeEntry?.content), [activeEntry?.content]);
 
   async function refreshSources() {
     if (!canOperate) {
@@ -245,7 +248,7 @@ export function ReaderPage() {
               }}
               type="button"
             >
-              <strong>{entry.title}</strong>
+              <strong>{toPlainText(entry.title) || "Untitled"}</strong>
               <span>{entry.source_title}</span>
               <span>{entry.is_read ? "已读" : "未读"}</span>
             </button>
@@ -259,8 +262,12 @@ export function ReaderPage() {
           <p>选择左侧文章开始阅读。</p>
         ) : (
           <>
-            <h2>{activeEntry.title}</h2>
-            <p>{activeEntry.summary ?? "无摘要"}</p>
+            <h2>{toPlainText(activeEntry.title) || "Untitled"}</h2>
+            {summaryHtml ? (
+              <div className="article-summary article-html" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
+            ) : (
+              <p>无摘要</p>
+            )}
             <div className="button-row">
               <button onClick={() => onMarkRead(activeEntry, !activeEntry.is_read)} type="button">
                 {activeEntry.is_read ? "标记未读" : "标记已读"}
@@ -292,7 +299,11 @@ export function ReaderPage() {
               </section>
             )}
             <article className="reader-content">
-              {activeEntry.content ? <pre>{activeEntry.content}</pre> : <p>暂无正文，查看原文链接。</p>}
+              {contentHtml ? (
+                <div className="article-html" dangerouslySetInnerHTML={{ __html: contentHtml }} />
+              ) : (
+                <p>暂无正文，查看原文链接。</p>
+              )}
             </article>
           </>
         )}
