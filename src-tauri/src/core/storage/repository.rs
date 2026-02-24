@@ -834,6 +834,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn untranslated_entries_follow_global_time_order() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let source_a = repository
+            .upsert_source(&make_source("Source A", "https://a.example.com/feed.xml"))
+            .await
+            .expect("source A create should succeed");
+        let source_b = repository
+            .upsert_source(&make_source("Source B", "https://b.example.com/feed.xml"))
+            .await
+            .expect("source B create should succeed");
+
+        repository
+            .upsert_entries(
+                source_a.id,
+                &[
+                    ParsedEntry {
+                        id: "a-new".to_string(),
+                        title: "A newer".to_string(),
+                        link: "https://a.example.com/new".to_string(),
+                        summary: None,
+                        content: None,
+                        published_at: Some("2026-02-24T10:00:00Z".to_string()),
+                    },
+                    ParsedEntry {
+                        id: "a-old".to_string(),
+                        title: "A older".to_string(),
+                        link: "https://a.example.com/old".to_string(),
+                        summary: None,
+                        content: None,
+                        published_at: Some("2026-02-24T09:00:00Z".to_string()),
+                    },
+                ],
+            )
+            .await
+            .expect("insert A entries should succeed");
+        repository
+            .upsert_entries(
+                source_b.id,
+                &[
+                    ParsedEntry {
+                        id: "b-new".to_string(),
+                        title: "B newer".to_string(),
+                        link: "https://b.example.com/new".to_string(),
+                        summary: None,
+                        content: None,
+                        published_at: Some("2026-02-24T08:00:00Z".to_string()),
+                    },
+                    ParsedEntry {
+                        id: "b-old".to_string(),
+                        title: "B older".to_string(),
+                        link: "https://b.example.com/old".to_string(),
+                        summary: None,
+                        content: None,
+                        published_at: Some("2026-02-24T07:00:00Z".to_string()),
+                    },
+                ],
+            )
+            .await
+            .expect("insert B entries should succeed");
+
+        let untranslated = repository
+            .list_entries_without_translated_title(10)
+            .await
+            .expect("list untranslated should succeed");
+        let titles = untranslated
+            .iter()
+            .map(|row| row.title.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(titles, vec!["A newer", "A older", "B newer", "B older"]);
+    }
+
+    #[tokio::test]
     async fn sync_candidates_respect_backoff_window() {
         let repository = SourceRepository::connect("sqlite::memory:")
             .await

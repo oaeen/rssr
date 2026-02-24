@@ -393,32 +393,31 @@ button:hover:not(:disabled) {
 
 .article-actions {
   display: flex;
-  gap: 6px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
 .icon-action {
-  min-width: 44px;
-  height: 44px;
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  border: 1px solid rgba(194, 210, 238, 0.8);
-  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
   color: #23446f;
-  font-size: 16px;
-  font-weight: 600;
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease;
+  transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
   white-space: nowrap;
   text-decoration: none;
 }
 
 .icon-action:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: rgba(227, 238, 255, 0.95);
+  transform: translateY(-1px) scale(1.03);
+  background: rgba(227, 238, 255, 0.6);
 }
 
 .icon-action:disabled {
@@ -427,14 +426,15 @@ button:hover:not(:disabled) {
 }
 
 .icon-action svg {
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.9;
+  stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
 
 .reader-content {
   margin-top: 12px;
@@ -515,6 +515,8 @@ button:hover:not(:disabled) {
   color: #243f5d;
   min-height: 34px;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .source-item-main {
@@ -557,6 +559,40 @@ button:hover:not(:disabled) {
 .source-item-active {
   background: rgba(204, 224, 255, 0.9);
   color: #112e52;
+}
+
+.source-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 160px;
+  border-radius: 12px;
+  border: 1px solid rgba(193, 210, 238, 0.85);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 14px 30px rgba(52, 78, 120, 0.22);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.source-context-menu .source-context-item {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1f3f66;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.source-context-menu .source-context-item:hover {
+  background: rgba(218, 232, 255, 0.72);
+  transform: none;
+}
+
+.source-context-menu .source-context-item-danger {
+  color: #a53030;
 }
 
 .tiny-muted {

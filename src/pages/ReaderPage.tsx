@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteSource,
@@ -72,6 +72,13 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
   const [summaryResult, setSummaryResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
+  const deletingSourceIds = useRef<Set<number>>(new Set());
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sourceContextMenu, setSourceContextMenu] = useState<{
+    source: Source;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const canOperate = isTauriRuntime();
 
@@ -160,6 +167,41 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!sourceContextMenu) {
+      return;
+    }
+
+    function onWindowPointerDown(event: PointerEvent) {
+      if (!contextMenuRef.current) {
+        setSourceContextMenu(null);
+        return;
+      }
+      if (!contextMenuRef.current.contains(event.target as Node)) {
+        setSourceContextMenu(null);
+      }
+    }
+
+    function onWindowKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSourceContextMenu(null);
+      }
+    }
+
+    function onWindowScroll() {
+      setSourceContextMenu(null);
+    }
+
+    window.addEventListener("pointerdown", onWindowPointerDown);
+    window.addEventListener("keydown", onWindowKeyDown);
+    window.addEventListener("scroll", onWindowScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onWindowPointerDown);
+      window.removeEventListener("keydown", onWindowKeyDown);
+      window.removeEventListener("scroll", onWindowScroll, true);
+    };
+  }, [sourceContextMenu]);
+
   async function onStartSync() {
     if (!canOperate) {
       return;
@@ -206,10 +248,11 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
     if (!canOperate) {
       return;
     }
-    const confirmed = window.confirm(`确认删除订阅「${source.title}」？`);
-    if (!confirmed) {
+    if (deletingSourceIds.current.has(source.id)) {
       return;
     }
+    setSourceContextMenu(null);
+    deletingSourceIds.current.add(source.id);
     setError("");
     try {
       await deleteSource(source.id);
@@ -220,6 +263,8 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
       await refreshEntries();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除订阅失败");
+    } finally {
+      deletingSourceIds.current.delete(source.id);
     }
   }
 
@@ -274,7 +319,18 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                 onClick={() => setSelectedSourceId(source.id)}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  void onDeleteSourceByContext(source);
+                  event.stopPropagation();
+                  const menuWidth = 160;
+                  const menuHeight = 96;
+                  const x = Math.max(
+                    8,
+                    Math.min(event.clientX, window.innerWidth - menuWidth - 8),
+                  );
+                  const y = Math.max(
+                    8,
+                    Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+                  );
+                  setSourceContextMenu({ source, x, y });
                 }}
                 title="右键可删除订阅"
               >
@@ -295,6 +351,31 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
             );
           })}
         </div>
+        {sourceContextMenu ? (
+          <div
+            ref={contextMenuRef}
+            className="source-context-menu"
+            style={{ left: `${sourceContextMenu.x}px`, top: `${sourceContextMenu.y}px` }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <button
+              type="button"
+              className="source-context-item source-context-item-danger"
+              onClick={() => {
+                void onDeleteSourceByContext(sourceContextMenu.source);
+              }}
+            >
+              取消订阅
+            </button>
+            <button
+              type="button"
+              className="source-context-item"
+              onClick={() => setSourceContextMenu(null)}
+            >
+              取消
+            </button>
+          </div>
+        ) : null}
       </aside>
 
       <section className="folo-list-panel">
@@ -354,7 +435,7 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
               </div>
               <div className="article-actions">
                 <button
-                  className="icon-action"
+                  className="icon-action icon-action-read"
                   onClick={() => onMarkRead(activeEntry, !activeEntry.is_read)}
                   type="button"
                   title={activeEntry.is_read ? "标记未读" : "标记已读"}
@@ -374,11 +455,16 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                   aria-label="AI 总结"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
+                    <path d="M9 6h11" />
+                    <path d="M9 12h11" />
+                    <path d="M9 18h11" />
+                    <path d="M5 6h.01" />
+                    <path d="M5 12h.01" />
+                    <path d="M5 18h.01" />
                   </svg>
                 </button>
                 <a
-                  className="icon-action"
+                  className="icon-action icon-action-open"
                   href={activeEntry.link}
                   target="_blank"
                   rel="noreferrer"
@@ -386,9 +472,10 @@ export function ReaderPage({ onOpenSettings }: ReaderPageProps = {}) {
                   aria-label="打开原文"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M14 4h6v6" />
-                    <path d="M10 14L20 4" />
-                    <path d="M20 14v6H4V4h6" />
+                    <path d="M12 2a10 10 0 100 20 10 10 0 000-20z" />
+                    <path d="M2 12h20" />
+                    <path d="M12 2c3 2.9 4.8 6.2 4.8 10s-1.8 7.1-4.8 10" />
+                    <path d="M12 2c-3 2.9-4.8 6.2-4.8 10s1.8 7.1 4.8 10" />
                   </svg>
                 </a>
               </div>

@@ -31,6 +31,7 @@ const DEFAULT_SYNC_TIMEOUT_SECS: u64 = 12;
 const DEFAULT_SYNC_RETRY_COUNT: u32 = 1;
 const DEFAULT_TITLE_TRANSLATE_INTERVAL_SECS: u64 = 45;
 const DEFAULT_TITLE_TRANSLATE_BATCH_SIZE: i64 = 300;
+const DEFAULT_TITLE_TRANSLATE_MAX_CONCURRENCY: usize = 4;
 
 struct SharedState {
     services: AppServices,
@@ -613,7 +614,7 @@ async fn sync_active_sources_internal(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(
         settings.max_concurrency as usize,
     ));
-    let mut join_set = JoinSet::new();
+    let mut join_set: JoinSet<Result<SyncSourceResponse, String>> = JoinSet::new();
     for source in sources {
         let repo = repository.clone();
         let sem = semaphore.clone();
@@ -664,42 +665,62 @@ async fn translate_titles_background(
         return Ok(0);
     }
 
-    let mut updated = 0_usize;
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(
+        DEFAULT_TITLE_TRANSLATE_MAX_CONCURRENCY,
+    ));
+    let mut join_set: JoinSet<Result<bool, String>> = JoinSet::new();
     for target in targets {
-        let input = target.title.trim();
-        if input.is_empty() {
-            continue;
-        }
-        let hash = hash_llm_input("title_translate_zh", &config.model, input);
-        let translated = if let Some(cached) = repository
-            .get_llm_cache("title_translate_zh", &config.model, &hash)
-            .await
-            .map_err(|error| error.to_string())?
-        {
-            cached
-        } else {
-            let result = call_chat_completion(
-                &config,
-                "You translate English article titles into concise Chinese.",
-                &format!(
-                    "Translate this article title into Chinese and keep it concise. Output only Chinese title.\n\n{}",
-                    input
-                ),
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-            repository
-                .set_llm_cache("title_translate_zh", &config.model, &hash, &result)
+        let repo = repository.clone();
+        let cfg = config.clone();
+        let sem = semaphore.clone();
+        join_set.spawn(async move {
+            let _permit = sem
+                .acquire_owned()
                 .await
                 .map_err(|error| error.to_string())?;
-            result
-        };
+            let input = target.title.trim().to_string();
+            if input.is_empty() {
+                return Ok(false);
+            }
+            let hash = hash_llm_input("title_translate_zh", &cfg.model, &input);
+            let translated = if let Some(cached) = repo
+                .get_llm_cache("title_translate_zh", &cfg.model, &hash)
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                cached
+            } else {
+                let result = call_chat_completion(
+                    &cfg,
+                    "You translate English article titles into concise Chinese.",
+                    &format!(
+                        "Translate this article title into Chinese and keep it concise. Output only Chinese title.\n\n{}",
+                        input
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+                repo.set_llm_cache("title_translate_zh", &cfg.model, &hash, &result)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                result
+            };
+            let normalized = translated.trim().to_string();
+            if normalized.is_empty() {
+                return Ok(false);
+            }
+            repo.set_entry_translated_title(target.id, &normalized)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(true)
+        });
+    }
 
-        repository
-            .set_entry_translated_title(target.id, translated.trim())
-            .await
-            .map_err(|error| error.to_string())?;
-        updated += 1;
+    let mut updated = 0_usize;
+    while let Some(result) = join_set.join_next().await {
+        if let Ok(Ok(true)) = result {
+            updated += 1;
+        }
     }
 
     Ok(updated)
