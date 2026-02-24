@@ -165,7 +165,7 @@ pub fn build_import_preview(
     }
 }
 
-fn normalize_url(url: &str) -> String {
+pub fn normalize_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_lowercase()
 }
 

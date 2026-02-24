@@ -1,4 +1,4 @@
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, QueryBuilder, Sqlite, SqlitePool};
 
 use super::models::{NewSource, SourceRecord};
 
@@ -81,12 +81,47 @@ impl SourceRepository {
             .rows_affected();
         Ok(affected)
     }
+
+    pub async fn upsert_sources_batch(&self, sources: &[NewSource]) -> Result<usize, StorageError> {
+        let mut inserted = 0_usize;
+        for source in sources {
+            self.upsert_source(source).await?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
+    pub async fn set_sources_active(
+        &self,
+        source_ids: &[i64],
+        is_active: bool,
+    ) -> Result<u64, StorageError> {
+        if source_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "UPDATE sources SET is_active = ",
+        );
+        query.push_bind(i64::from(is_active));
+        query.push(", updated_at = CURRENT_TIMESTAMP WHERE id IN (");
+        let mut separated = query.separated(", ");
+        for source_id in source_ids {
+            separated.push_bind(*source_id);
+        }
+        separated.push_unseparated(")");
+
+        let affected = query.build().execute(&self.pool).await?.rows_affected();
+        Ok(affected)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::importer::{build_import_preview, parse_opml};
     use sqlx::Row;
+    use std::collections::HashSet;
 
     fn make_source(title: &str, feed_url: &str) -> NewSource {
         NewSource {
@@ -176,5 +211,66 @@ mod tests {
 
         assert_eq!(affected, 1);
         assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_sources_active_updates_batch_rows() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let first = repository
+            .upsert_source(&make_source("A", "https://a.com/feed.xml"))
+            .await
+            .expect("create A");
+        let second = repository
+            .upsert_source(&make_source("B", "https://b.com/feed.xml"))
+            .await
+            .expect("create B");
+
+        let affected = repository
+            .set_sources_active(&[first.id, second.id], false)
+            .await
+            .expect("batch update should succeed");
+        let rows = repository.list_sources().await.expect("list should succeed");
+
+        assert_eq!(affected, 2);
+        assert!(rows.iter().all(|row| row.is_active == 0));
+    }
+
+    #[tokio::test]
+    async fn e2e_import_then_delete_flow() {
+        let repository = SourceRepository::connect("sqlite::memory:")
+            .await
+            .expect("connect must succeed");
+        let opml = include_str!("../../../../fixtures/import-samples/hackerNewsStars.xml");
+        let parsed_sources = parse_opml(opml).expect("opml parse should succeed");
+        let preview = build_import_preview(parsed_sources, &HashSet::new());
+        let batch: Vec<NewSource> = preview
+            .new_sources
+            .into_iter()
+            .take(5)
+            .map(|source| NewSource {
+                title: source.title,
+                site_url: source.site_url,
+                feed_url: source.feed_url,
+                category: source.category,
+                is_active: true,
+            })
+            .collect();
+
+        repository
+            .upsert_sources_batch(&batch)
+            .await
+            .expect("batch upsert should succeed");
+        let current = repository.list_sources().await.expect("list should succeed");
+        let deleted = repository
+            .delete_source(current[0].id)
+            .await
+            .expect("delete should succeed");
+        let after_delete = repository.list_sources().await.expect("list should succeed");
+
+        assert_eq!(current.len(), 5);
+        assert_eq!(deleted, 1);
+        assert_eq!(after_delete.len(), 4);
     }
 }
